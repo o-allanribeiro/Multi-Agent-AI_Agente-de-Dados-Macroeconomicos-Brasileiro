@@ -14,8 +14,7 @@ from typing import TypedDict, Annotated, Optional, List
 import operator
 import pandas as pd
 import matplotlib
-# CORREÇÃO: Define o backend do Matplotlib para 'Agg' para evitar erros de GUI
-matplotlib.use('Agg')
+import matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 
