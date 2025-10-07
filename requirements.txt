@@ -9,9 +9,14 @@ matplotlib==3.9.0
 
 # Brazilian data source specific libraries
 python-bcb
-
+wbgapi==1.0.12
 # Utility for managing API keys
 python-dotenv==1.0.1
 
 # Search API for Deep Research Agent
 tavily-python==0.3.3
+
+# Web Server Libraries 
+fastapi==0.111.0
+uvicorn[standard]==0.29.0
+python-multipart==0.0.9
