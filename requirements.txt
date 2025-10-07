@@ -1,0 +1,17 @@
+# Core libraries for agent development
+langchain==0.2.1
+langgraph==0.0.57
+langchain-google-genai==1.0.6
+
+# Data handling and visualization
+pandas==2.2.2
+matplotlib==3.9.0
+
+# Brazilian data source specific libraries
+python-bcb
+
+# Utility for managing API keys
+python-dotenv==1.0.1
+
+# Search API for Deep Research Agent
+tavily-python==0.3.3

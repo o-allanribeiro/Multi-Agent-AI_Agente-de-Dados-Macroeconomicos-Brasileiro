@@ -1,0 +1,42 @@
+# Arquivos de variáveis de ambiente - NUNCA ENVIE PARA O GIT!
+# Contêm senhas, chaves de API e outras informações sensíveis.
+.env
+.env.*
+!.env.example
+
+# Ambientes virtuais
+# Contêm todas as bibliotecas instaladas e são específicas da sua máquina.
+venv/
+.venv/
+env/
+virtualenv/
+
+# Cache e arquivos compilados do Python
+# Gerados automaticamente pelo Python para otimizar a execução.
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Pastas de distribuição e build
+# Geradas ao empacotar seu projeto.
+build/
+dist/
+*.egg-info/
+*.egg
+
+# Arquivos e pastas de IDEs e editores de código
+# Configurações específicas do seu ambiente de desenvolvimento.
+.vscode/
+.idea/
+*.swp
+
+# Arquivos de testes e cobertura de código
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Arquivos de sistema operacional
+# Gerados por macOS, Windows, etc.
+.DS_Store
+Thumbs.db
