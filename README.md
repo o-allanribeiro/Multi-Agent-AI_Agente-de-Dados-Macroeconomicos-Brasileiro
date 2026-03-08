@@ -97,8 +97,8 @@ pip install -r requirements.txt
     cd src
     ```
   - Inicie o servidor FastAPI. Mantenha este terminal aberto.
-    ```bash
-    python -m uvicorn server:app
+    ```bash0
+0,    python -m uvicorn server:app
     ```
 
 #### 6\. Abra a Interface (Frontend)
