@@ -1,0 +1,31 @@
+# =============================================================================
+# config/production.yaml — Configuração de Produção (AWS)
+# Projeto: Agente Macro-BR
+#
+# Valores seguros e restritivos para ambiente de produção.
+# Todos os segredos (API keys, credenciais) devem vir de variáveis de
+# ambiente ou do AWS Secrets Manager — NUNCA hardcoded neste arquivo.
+# =============================================================================
+
+app:
+  debug: false
+
+logging:
+  level: "WARNING"
+  format: "json"           # JSON estruturado para ingestão no CloudWatch
+
+api:
+  workers: 4
+  reload: false
+  cors_origins: []         # OBRIGATÓRIO: definir via variável de ambiente CORS_ORIGINS
+  docs_url: null           # Desabilita Swagger UI em produção
+  redoc_url: null
+
+storage:
+  backend: "dynamodb"      # DynamoDB em produção (Alta disponibilidade)
+
+agent:
+  verbose: false
+
+plot:
+  dpi: 100                 # Menor qualidade → menor tamanho → upload mais rápido para S3

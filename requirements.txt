@@ -1,22 +1,28 @@
-# Core libraries for agent development
+# =============================================================================
+# DEPENDÊNCIAS DE PRODUÇÃO — Agente Macro-BR v0.1.0
+# =============================================================================
+
+# --- Core: Agente + LLM ---
 langchain==0.2.1
 langgraph==0.0.57
 langchain-google-genai==1.0.6
 
-# Data handling and visualization
+# --- Dados + Visualização ---
 pandas==2.2.2
 matplotlib==3.9.0
+requests>=2.31.0
 
-# Brazilian data source specific libraries
+# --- Fontes de Dados Oficiais ---
 python-bcb
 wbgapi==1.0.12
-# Utility for managing API keys
+
+# --- Configuração + Utilitários ---
 python-dotenv==1.0.1
+pydantic>=2.7.0
+pydantic-settings>=2.2.0
+pyyaml>=6.0.1
 
-# Search API for Deep Research Agent
-tavily-python==0.3.3
-
-# Web Server Libraries 
+# --- Servidor Web ---
 fastapi==0.111.0
 uvicorn[standard]==0.29.0
 python-multipart==0.0.9

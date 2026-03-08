@@ -1,0 +1,82 @@
+# =============================================================================
+# config/default.yaml — Configuração Padrão
+# Projeto: Agente Macro-BR
+#
+# Este arquivo define os valores base para TODOS os ambientes.
+# Valores aqui são sobrescritos pelos arquivos de ambiente específicos
+# (development.yaml, production.yaml) e pelas variáveis de ambiente.
+#
+# PRECEDÊNCIA (maior → menor):
+#   1. Variáveis de ambiente (ex: LOG_LEVEL=DEBUG)
+#   2. Arquivo .env
+#   3. Arquivo do ambiente (config/development.yaml)
+#   4. Este arquivo (config/default.yaml)
+# =============================================================================
+
+app:
+  name: "Agente de Análise Macroeconômica"
+  version: "0.1.0"
+  description: "Assistente de IA para análise de indicadores econômicos brasileiros"
+  debug: false
+
+llm:
+  provider: "google"
+  model: "gemini-2.5-flash"
+  temperature: 0.2
+  max_retries: 3
+  timeout_seconds: 120
+
+agent:
+  max_iterations: 10
+  verbose: false
+  output_dir: "output"
+
+logging:
+  level: "INFO"
+  format: "json"           # json = estruturado (CloudWatch) | text = legível (dev)
+  file_path: null          # null = apenas stdout | "/logs/app.log" = arquivo
+
+api:
+  host: "0.0.0.0"
+  port: 8000
+  workers: 1
+  reload: false
+  cors_origins:
+    - "http://localhost:3000"
+    - "http://localhost:8080"
+    - "http://127.0.0.1:5500"
+  docs_url: "/docs"
+  redoc_url: "/redoc"
+
+storage:
+  backend: "sqlite"        # sqlite | dynamodb
+  database_url: "sqlite:///./agente_macro.db"
+  dynamodb:
+    region: "us-east-1"
+    table_name: "agente-macro-conversations"
+    endpoint_url: null     # null = AWS real | "http://localhost:8001" = DynamoDB Local
+
+plot:
+  format: "png"
+  dpi: 150
+  figsize_width: 12
+  figsize_height: 6
+  style: "seaborn-v0_8-whitegrid"
+  color_primary: "#1f4e79"
+  color_secondary: "#2e75b6"
+  font_family: "DejaVu Sans"
+  title_fontsize: 16
+  label_fontsize: 12
+
+data_sources:
+  bcb:
+    timeout_seconds: 30
+    max_retries: 3
+  ipea:
+    timeout_seconds: 30
+    max_retries: 3
+    base_url: "https://www.ipeadata.gov.br/api/odata4"
+  world_bank:
+    timeout_seconds: 30
+    max_retries: 3
+    default_country: "BRA"

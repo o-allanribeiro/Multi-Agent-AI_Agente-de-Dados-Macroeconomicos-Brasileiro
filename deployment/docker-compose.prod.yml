@@ -1,0 +1,58 @@
+# ---------------------------------------------------------------------------
+# Agente Macro-BR — docker-compose PRODUÇÃO (referência AWS ECS)
+# NÃO usar diretamente em produção sem ajustar segredos e S3.
+# Para AWS: usar task-definition ECS com secrets no Secrets Manager.
+# ---------------------------------------------------------------------------
+
+version: "3.9"
+
+services:
+  api:
+    image: agente-macro-br:latest   # tag gerada no CI/CD
+    container_name: agente-macro-api-prod
+    restart: always
+    environment:
+      APP_ENV: production
+      PYTHONPATH: /app/src
+      LOG_FORMAT: json              # formato JSON para CloudWatch Logs
+      # Segredos injetados via ECS Secrets / AWS Secrets Manager em produção
+      # Localmente: preencher via .env ou variáveis de ambiente do host
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY}
+      AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-us-east-1}
+      S3_BUCKET_PLOTS: ${S3_BUCKET_PLOTS}
+      DYNAMODB_TABLE: ${DYNAMODB_TABLE:-agente-macro-history}
+    ports:
+      - "8000:8000"
+    volumes:
+      # Em produção os plots vão para S3; volume local como fallback
+      - output_prod:/app/output
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    logging:
+      driver: awslogs   # CloudWatch Logs (requer daemon awslogs no host)
+      options:
+        awslogs-group: /ecs/agente-macro-br
+        awslogs-region: us-east-1
+        awslogs-stream-prefix: api
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 512M
+        reservations:
+          cpus: "0.125"
+          memory: 256M
+    command: >
+      uvicorn asgi:app
+      --host 0.0.0.0
+      --port 8000
+      --workers 1
+      --log-config /dev/null
+
+volumes:
+  output_prod:
+    driver: local

@@ -6,42 +6,48 @@ Este script inicia um loop de chat que permite ao usuário fazer perguntas
 continuamente ao agente e receber as respostas.
 """
 
-# Importa a aplicação 'app' compilada do nosso módulo de agente
-from agent import app, AgentState
+# =============================================================================
+# ARQUIVO LEGADO — src/main.py (CLI)
+# Este arquivo foi substituído por:
+#   - src/cli.py     (interface de linha de comando)
+#   - src/main_asgi.py  não existe: o entry point ASGI é src/main.py na NOVA estrutura
+#
+# Para rodar o servidor, use a partir da raiz do projeto:
+#   PYTHONPATH=src uvicorn main:app --reload
+#   (o main referenciado é src/main.py da NOVA estrutura — ver cli.py)
+# =============================================================================
+
+# Mantido para não quebrar referências existentes.
+# Use src/cli.py para a interface CLI atualizada.
+
+from agente.agent import run_agent
+
 
 def main():
-    """
-    Função principal que gerencia o loop de interação com o usuário.
-    """
-    print("--- Agente de Pesquisa Econômica ---")
-    print('Olá! Sou seu assistente para análise de dados macroeconômicos.')
-    print('Faça uma pergunta ou digite "sair" para terminar.')
+    """Loop interativo CLI (legado)."""
+    print("=== Agente de Pesquisa Macroeconômica ===")
+    print("Olá! Sou seu assistente para análise de dados macroeconômicos.")
+    print('Digite "sair" para encerrar.\n')
 
     while True:
-        # Pede uma pergunta ao usuário
-        question = input("\nSua pergunta: ")
-
-        # Condição de saída do loop
-        if question.lower() == "sair":
+        question = input("Sua pergunta: ").strip()
+        if question.lower() in ("sair", "exit", "quit"):
             print("Até logo!")
             break
+        if not question:
+            continue
 
-        # Define o estado inicial para a invocação do agente
-        initial_state = {"question": question, "intermediate_steps": []}
+        print("\nProcessando...\n")
+        final_state = run_agent(question=question)
 
-        # Invoca o agente com a pergunta do usuário
-        print("\nProcessando sua pergunta...")
-        final_state = app.invoke(initial_state)
+        print("--- RESPOSTA ---")
+        print(final_state.get("response", "Não foi possível gerar uma resposta."))
+        if final_state.get("plot_path"):
+            print(f"\n[Gráfico salvo em: {final_state['plot_path']}]")
+        print()
 
-        # Exibe a resposta final de forma limpa
-        print("\n--- RESPOSTA DO AGENTE ---")
-        print(final_state.get('response', 'Não consegui gerar uma resposta.'))
-        
-        # Informa onde o gráfico foi salvo, se ele foi criado
-        if final_state.get('plot_path'):
-            print(f"-> Um gráfico de visualização foi salvo em: {final_state.get('plot_path')}")
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
 ```
 

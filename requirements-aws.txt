@@ -1,0 +1,22 @@
+# =============================================================================
+# DEPENDÊNCIAS AWS
+# Projeto: Agente Macro-BR
+#
+# Instalação: pip install -r requirements-aws.txt
+# Use para deployments no ambiente AWS (ECS, Lambda, EC2)
+# =============================================================================
+
+# Herda todas as dependências de produção
+-r requirements.txt
+
+# --- AWS SDK (boto3) ---
+boto3>=1.34.0
+botocore>=1.34.0
+
+# --- CloudWatch Logging Handler ---
+# Envia logs estruturados diretamente para o AWS CloudWatch Logs
+watchtower>=3.0.1
+
+# --- Para deploy serverless com AWS Lambda (opcional) ---
+# Adaptador ASGI → Lambda; descomente se usar arquitetura serverless
+# mangum>=0.17.0

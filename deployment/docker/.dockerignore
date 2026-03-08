@@ -1,0 +1,49 @@
+# Binários Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+
+# Ambientes virtuais
+.venv/
+venv/
+ENV/
+
+# Arquivos de IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Artefatos de build
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Cobertura de testes
+.coverage
+htmlcov/
+.pytest_cache/
+
+# Segredos — nunca enviar ao container
+.env
+.env.local
+.env.*.local
+secrets/
+
+# Saídas geradas em runtime (montadas via volume)
+output/
+logs/
+*.log
+*.png
+*.csv
+
+# Cache de ferramentas
+.mypy_cache/
+.ruff_cache/
+
+# macOS / Windows
+.DS_Store
+Thumbs.db

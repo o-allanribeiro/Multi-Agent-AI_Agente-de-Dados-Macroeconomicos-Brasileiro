@@ -1,0 +1,66 @@
+# ---------------------------------------------------------------------------
+# Agente Macro-BR — docker-compose para desenvolvimento local
+# Uso: docker compose up --build   (executar de dentro de deployment/)
+# ---------------------------------------------------------------------------
+
+services:
+  api:
+    build:
+      context: ..
+      dockerfile: deployment/docker/Dockerfile
+    image: agente-macro-br:dev
+    container_name: agente-macro-api
+    restart: unless-stopped
+    env_file:
+      - ../.env
+    environment:
+      APP_ENV: development
+      PYTHONPATH: /app/src
+      LOG_FORMAT: text
+      DATABASE_URL: sqlite:////app/output/dev.db
+      MPLCONFIGDIR: /tmp/matplotlib
+    ports:
+      - "8000:8000"
+    volumes:
+      # monta código-fonte para hot-reload em dev
+      - ../src:/app/src:ro
+      - ../config:/app/config:ro
+      # persiste gráficos e banco SQLite entre reinicializações
+      - output_data:/app/output
+      - log_data:/app/logs
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    command: >
+      uvicorn asgi:app
+      --host 0.0.0.0
+      --port 8000
+      --reload
+      --reload-dir /app/src
+
+  tests:
+    build:
+      context: ..
+      dockerfile: deployment/docker/Dockerfile.test
+    image: agente-macro-br:test
+    container_name: agente-macro-tests
+    env_file:
+      - ../.env
+    environment:
+      APP_ENV: testing
+      PYTHONPATH: /app/src
+    volumes:
+      - ../src:/app/src:ro
+      - ../tests:/app/tests:ro
+      - ../config:/app/config:ro
+    profiles:
+      - test   # só executa com: docker compose --profile test up tests
+
+volumes:
+  output_data:
+    driver: local
+  log_data:
+    driver: local

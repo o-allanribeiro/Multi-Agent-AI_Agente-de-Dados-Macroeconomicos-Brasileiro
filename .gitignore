@@ -40,3 +40,33 @@ htmlcov/
 # Gerados por macOS, Windows, etc.
 .DS_Store
 Thumbs.db
+
+# Banco de dados local gerado em desenvolvimento
+*.db
+*.sqlite3
+
+# Gráficos e artefatos gerados pelo agente
+output/
+src/output/
+
+# Relatórios de cobertura de testes
+htmlcov/
+.coverage
+coverage.xml
+
+# mypy
+.mypy_cache/
+*.pyi.cache
+
+# Logs locais
+*.log
+logs/
+
+# Artefatos de build e distribuição
+build/
+dist/
+*.egg-info/
+
+# Pasta de scripts temporários
+scratch/
+tmp/

@@ -1,0 +1,30 @@
+# ---------------------------------------------------------------------------
+# Agente Macro-BR — Dockerfile de testes
+# Baseado no Dockerfile de runtime, adiciona dependências de dev/test
+# ---------------------------------------------------------------------------
+
+FROM python:3.11-slim AS test
+
+WORKDIR /app
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends build-essential curl \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt requirements-dev.txt ./
+
+RUN pip install --upgrade pip \
+    && pip install --no-cache-dir -r requirements.txt \
+    && pip install --no-cache-dir -r requirements-dev.txt
+
+COPY src/ ./src/
+COPY config/ ./config/
+COPY tests/ ./tests/
+COPY pyproject.toml ./
+
+ENV PYTHONPATH=/app/src \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    APP_ENV=testing
+
+CMD ["pytest", "tests/", "-v", "--tb=short", "--cov=src", "--cov-report=term-missing"]

@@ -1,0 +1,25 @@
+# =============================================================================
+# config/development.yaml — Configuração de Desenvolvimento Local
+# Projeto: Agente Macro-BR
+#
+# Sobrescreve valores de default.yaml para facilitar o desenvolvimento.
+# =============================================================================
+
+app:
+  debug: true
+
+logging:
+  level: "DEBUG"
+  format: "text"           # Formato legível no terminal
+
+api:
+  reload: true             # Hot-reload ao salvar arquivos
+  cors_origins:
+    - "*"                  # Permissivo em dev — qualquer origem
+
+storage:
+  backend: "sqlite"
+  database_url: "sqlite:///./dev_agente_macro.db"
+
+agent:
+  verbose: true            # Exibe logs detalhados do LangGraph
