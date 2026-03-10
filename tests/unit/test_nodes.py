@@ -136,6 +136,102 @@ class TestPlotNode:
         result = plot_node(mock_agent_state)
         assert result.get("plot_path") is None
 
+    def test_plot_multi_series_creates_file(self, mock_state_with_data, sample_combined_df, tmp_path):
+        """Plot multi-série deve criar arquivo PNG para cada série num subplot."""
+        from agente.nodes.plot import plot_node
+        from pathlib import Path
+
+        state = {**mock_state_with_data, "data": sample_combined_df}
+        with patch("agente.nodes.plot.get_settings") as mock_settings:
+            mock_settings.return_value.agent_output_dir = str(tmp_path)
+            result = plot_node(state)
+
+        assert result.get("plot_path") is not None
+        assert Path(result["plot_path"]).exists()
+
+    def test_plot_with_juros_reais_derived_creates_file(self, mock_state_with_data, sample_combined_df, tmp_path):
+        """Plot com derived_data juros_reais deve adicionar painel extra."""
+        from agente.nodes.plot import plot_node
+        from pathlib import Path
+        from tools.derived import compute_juros_reais
+
+        jr = compute_juros_reais(sample_combined_df)
+        assert jr is not None, "compute_juros_reais retornou None — verifique fixture sample_combined_df"
+
+        state = {**mock_state_with_data, "data": sample_combined_df, "derived_data": {"juros_reais": jr}}
+        with patch("agente.nodes.plot.get_settings") as mock_settings:
+            mock_settings.return_value.agent_output_dir = str(tmp_path)
+            result = plot_node(state)
+
+        assert result.get("plot_path") is not None
+        assert Path(result["plot_path"]).exists()
+
+    def test_plot_with_cambio_real_derived_creates_file(self, mock_agent_state, tmp_path):
+        """Plot com derived_data cambio_real deve criar dois painéis (nominal + índice)."""
+        from agente.nodes.plot import plot_node
+        from pathlib import Path
+        from tools.derived import compute_cambio_real
+
+        dates = pd.date_range("2023-01-01", periods=24, freq="MS")
+        df = pd.DataFrame({"1": [5.0 + i * 0.05 for i in range(24)],
+                           "433": [0.5] * 24}, index=dates)
+        cr = compute_cambio_real(df)
+        assert cr is not None
+
+        state = {**mock_agent_state, "data": df, "derived_data": {"cambio_real": cr}}
+        with patch("agente.nodes.plot.get_settings") as mock_settings:
+            mock_settings.return_value.agent_output_dir = str(tmp_path)
+            result = plot_node(state)
+
+        assert result.get("plot_path") is not None
+        assert Path(result["plot_path"]).exists()
+
+    def test_plot_with_historical_stats_mean_line(self, mock_state_with_data, tmp_path):
+        """Plot com historical_stats deve incluir linha de média histórica sem erro."""
+        from agente.nodes.plot import plot_node
+        from pathlib import Path
+
+        state = {
+            **mock_state_with_data,
+            "historical_stats": {"433": {"mean_full": 0.48, "mean_5y": 0.44}},
+        }
+        with patch("agente.nodes.plot.get_settings") as mock_settings:
+            mock_settings.return_value.agent_output_dir = str(tmp_path)
+            result = plot_node(state)
+
+        assert result.get("plot_path") is not None
+        assert Path(result["plot_path"]).exists()
+
+    def test_plot_with_audit_flags_creates_file(self, mock_state_with_data, tmp_path):
+        """Plot com audit_flags CRÍTICO deve criar arquivo sem erro."""
+        from agente.nodes.plot import plot_node
+        from pathlib import Path
+
+        state = {
+            **mock_state_with_data,
+            "audit_flags": ["[CRÍTICO] Dados defasados: 500 dias sem atualização"],
+        }
+        with patch("agente.nodes.plot.get_settings") as mock_settings:
+            mock_settings.return_value.agent_output_dir = str(tmp_path)
+            result = plot_node(state)
+
+        assert result.get("plot_path") is not None
+        assert Path(result["plot_path"]).exists()
+
+    def test_plot_output_is_valid_png(self, mock_state_with_data, tmp_path):
+        """Arquivo gerado pelo plot_node deve ter magic bytes de PNG válido."""
+        from agente.nodes.plot import plot_node
+
+        with patch("agente.nodes.plot.get_settings") as mock_settings:
+            mock_settings.return_value.agent_output_dir = str(tmp_path)
+            result = plot_node(mock_state_with_data)
+
+        path = result.get("plot_path")
+        assert path is not None
+        with open(path, "rb") as f:
+            header = f.read(8)
+        assert header == b"\x89PNG\r\n\x1a\n", "Arquivo salvo não é um PNG válido"
+
 
 class TestResponseNode:
     """Testes do nó de resposta."""
