@@ -51,9 +51,41 @@ def sample_gini_df() -> pd.DataFrame:
     return pd.DataFrame({"SI.POV.GINI": values}, index=dates)
 
 
+@pytest.fixture(autouse=True)
+def bypass_series_cache(monkeypatch):
+    """
+    Desabilita o cache de séries durante testes para garantir determinismo.
+
+    O SeriesCache é um singleton SQLite. Sem este bypass, mocks de API
+    (sgs.get, requests.get) são ignorados porque o cache retorna dados
+    frescos de execuções anteriores. Esta fixture substitui get_series_cache
+    em todos os módulos de ferramentas por um mock que sempre retorna miss.
+    """
+    from unittest.mock import MagicMock
+
+    mock_cache = MagicMock()
+    mock_cache.get.return_value = (None, False)  # sempre cache miss
+    mock_cache.set.return_value = None
+    mock_cache.clear_all.return_value = None
+
+    noop = lambda: mock_cache  # noqa: E731
+
+    import tools.bcb as _bcb
+    import tools.cache as _cache
+    import tools.ibge as _ibge
+    import tools.ipea as _ipea
+    import tools.world_bank as _wb
+
+    monkeypatch.setattr(_cache, "_cache_instance", mock_cache)
+    monkeypatch.setattr(_bcb, "get_series_cache", noop)
+    monkeypatch.setattr(_ipea, "get_series_cache", noop)
+    monkeypatch.setattr(_ibge, "get_series_cache", noop)
+    monkeypatch.setattr(_wb, "get_series_cache", noop)
+
+
 @pytest.fixture()
 def mock_agent_state() -> dict:
-    """Estado inicial mínimo para testes de nós individuais."""
+    """Estado inicial mínimo para testes de nós individuais (inclui campos Onda 3)."""
     return {
         "question": "Qual a evolução do IPCA nos últimos 2 anos?",
         "session_id": "test-001",
@@ -66,6 +98,12 @@ def mock_agent_state() -> dict:
         "plot_path": None,
         "response": None,
         "error": None,
+        # Campos Onda 3
+        "historical_stats": {},
+        "historical_stats_text": "",
+        "derived_data": {},
+        "audit_flags": [],
+        "audit_summary": "",
     }
 
 
@@ -78,3 +116,13 @@ def mock_state_with_data(mock_agent_state, sample_ipca_df) -> dict:
     state["tool_to_use"] = "get_bcb_series"
     state["tool_params"] = {"series_code": 433, "last_n_years": 2}
     return state
+
+
+@pytest.fixture(scope="session")
+def sample_combined_df(sample_selic_df, sample_ipca_df) -> pd.DataFrame:
+    """DataFrame combinado Selic + IPCA para testes de indicadores derivados."""
+    # Renomeia para os nomes canônicos esperados por derived.py
+    selic = sample_selic_df.rename(columns={"432": "432"})
+    ipca = sample_ipca_df.rename(columns={"433": "433"})
+    combined = pd.concat([selic, ipca], axis=1).dropna()
+    return combined

@@ -132,7 +132,17 @@ def compute_cambio_real(df: pd.DataFrame) -> pd.DataFrame | None:
 
     result = df[[cambio_col, ipca_col]].copy()
     result.index = pd.to_datetime(result.index)
-    result = result.sort_index().dropna()
+    result = result.sort_index()
+
+    # Alinha frequências: câmbio pode ser diário e IPCA mensal.
+    # Reamostrar ambos para mensal (month-start) garante alinhamento correto.
+    cambio_monthly = result[cambio_col].resample("MS").mean()
+    ipca_monthly   = result[ipca_col].resample("MS").mean()
+    result = pd.concat([cambio_monthly, ipca_monthly], axis=1).dropna()
+
+    if result.empty:
+        logger.warning("Câmbio real: DataFrame vazio após alinhamento de frequências")
+        return None
 
     # Índice de preços acumulado (base = primeiro ponto)
     ipca_dec = result[ipca_col] / 100.0

@@ -165,3 +165,303 @@ class TestResponseNode:
         result = response_node(state)
         assert result.get("response") is not None
         assert len(result["response"]) > 0
+
+
+# =============================================================================
+# Onda 3 — Nó de Estatísticas Históricas
+# =============================================================================
+
+class TestStatsNode:
+    """Testes do nó de estatísticas históricas (Onda 3)."""
+
+    def _make_state(self, df, question: str = "Qual o IPCA dos últimos 5 anos?") -> dict:
+        """Constrói estado de teste com todos os campos Onda 3."""
+        return {
+            "question": question,
+            "session_id": "test-stats-001",
+            "plan": None,
+            "tool_to_use": None,
+            "tool_params": None,
+            "intermediate_steps": [],
+            "data": df,
+            "analysis": None,
+            "plot_path": None,
+            "response": None,
+            "error": None,
+            "historical_stats": {},
+            "historical_stats_text": "",
+            "derived_data": {},
+            "audit_flags": [],
+            "audit_summary": "",
+        }
+
+    def test_computes_zscore_for_clear_outlier(self):
+        """Z-score deve ser alto quando o último valor está muito afastado da média."""
+        from agente.nodes.stats import stats_node
+
+        # 59 valores iguais e último muito diferente → z-score alto
+        dates = pd.date_range(end=pd.Timestamp.now(), periods=60, freq="MS")
+        values = [10.0] * 59 + [25.0]
+        df = pd.DataFrame({"ipca": values}, index=dates)
+        state = self._make_state(df)
+
+        result = stats_node(state)
+        z = result["historical_stats"]["ipca"]["zscore_latest"]
+        assert z > 3.0, f"Z-score esperado > 3.0 para outlier claro, obtido: {z}"
+
+    def test_trend_direction_alta(self):
+        """Tendência de 3 meses deve ser 'alta' em série claramente crescente."""
+        from agente.nodes.stats import stats_node
+
+        # Base estável para garantir std > 0, depois 3 últimos meses subindo forte
+        dates = pd.date_range(end=pd.Timestamp.now(), periods=36, freq="MS")
+        base = [5.0] * 33 + [6.0, 7.5, 9.5]
+        df = pd.DataFrame({"selic": base}, index=dates)
+        state = self._make_state(df)
+
+        result = stats_node(state)
+        trend = result["historical_stats"]["selic"]["trend_3m"]
+        assert trend == "alta", f"Esperado 'alta', obtido: {trend}"
+
+    def test_trend_direction_baixa(self):
+        """Tendência de 3 meses deve ser 'baixa' em série claramente decrescente."""
+        from agente.nodes.stats import stats_node
+
+        dates = pd.date_range(end=pd.Timestamp.now(), periods=36, freq="MS")
+        base = [10.0] * 33 + [8.5, 6.5, 4.0]
+        df = pd.DataFrame({"selic": base}, index=dates)
+        state = self._make_state(df)
+
+        result = stats_node(state)
+        trend = result["historical_stats"]["selic"]["trend_3m"]
+        assert trend == "baixa", f"Esperado 'baixa', obtido: {trend}"
+
+    def test_percentile_rank_at_max_value(self):
+        """Último valor sendo o máximo absoluto histórico → percentil ≈ 100%."""
+        from agente.nodes.stats import stats_node
+
+        dates = pd.date_range(end=pd.Timestamp.now(), periods=24, freq="MS")
+        values = list(range(1, 24)) + [100]  # último é máximo absoluto
+        df = pd.DataFrame({"indicador": values}, index=dates)
+        state = self._make_state(df)
+
+        result = stats_node(state)
+        pct = result["historical_stats"]["indicador"]["percentile_rank"]
+        assert pct > 95.0, f"Percentil esperado > 95 para máximo histórico, obtido: {pct}"
+
+    def test_stats_returns_empty_on_no_data(self):
+        """stats_node deve retornar estado sem stats quando não há dados."""
+        from agente.nodes.stats import stats_node
+
+        state = self._make_state(None)
+        result = stats_node(state)
+        assert result["historical_stats"] == {}
+        assert result["historical_stats_text"] == ""
+        assert result["derived_data"] == {}
+
+    def test_stats_text_contains_zscore_label(self):
+        """Texto formatado de stats deve incluir 'Z-score'."""
+        from agente.nodes.stats import stats_node
+
+        dates = pd.date_range(end=pd.Timestamp.now(), periods=24, freq="MS")
+        values = [0.5 + i * 0.01 for i in range(24)]  # leve variação para std > 0
+        df = pd.DataFrame({"ipca": values}, index=dates)
+        state = self._make_state(df)
+
+        result = stats_node(state)
+        text = result["historical_stats_text"]
+        assert "Z-score" in text, "Z-score deve aparecer no texto de contexto histórico"
+
+    def test_detects_juros_reais_and_applies_fisher(self, sample_combined_df):
+        """Pergunta sobre juro real deve disparar o cálculo Fisher e popular derived_data."""
+        from agente.nodes.stats import stats_node
+
+        state = self._make_state(
+            sample_combined_df,
+            question="Qual o juro real no Brasil hoje?",
+        )
+        result = stats_node(state)
+        assert "juros_reais" in result["derived_data"], (
+            "Derivado 'juros_reais' deve ser calculado para pergunta sobre juro real"
+        )
+        jr_df = result["derived_data"]["juros_reais"]
+        assert not jr_df.empty
+        assert "juros_reais_pct" in jr_df.columns
+
+    def test_mean_1y_3y_5y_are_populated(self):
+        """Médias de 1, 3 e 5 anos devem ser calculadas em séries longas o suficiente."""
+        from agente.nodes.stats import stats_node
+
+        dates = pd.date_range(end=pd.Timestamp.now(), periods=72, freq="MS")
+        values = [10.0 + i * 0.05 for i in range(72)]
+        df = pd.DataFrame({"selic": values}, index=dates)
+        state = self._make_state(df)
+
+        result = stats_node(state)
+        st = result["historical_stats"]["selic"]
+        assert st["mean_1y"] is not None
+        assert st["mean_3y"] is not None
+        assert st["mean_5y"] is not None
+
+
+# =============================================================================
+# Onda 3 — Nó Auditor de Consistência Macroeconômica
+# =============================================================================
+
+class TestAuditorNode:
+    """Testes do nó auditor de consistência macroeconômica (Onda 3)."""
+
+    def _base_state(self, historical_stats=None, derived_data=None, analysis=None) -> dict:
+        return {
+            "question": "Teste",
+            "session_id": "test-audit-001",
+            "plan": None,
+            "tool_to_use": None,
+            "tool_params": None,
+            "intermediate_steps": [],
+            "data": None,
+            "analysis": analysis or "",
+            "plot_path": None,
+            "response": None,
+            "error": None,
+            "historical_stats": historical_stats or {},
+            "historical_stats_text": "",
+            "derived_data": derived_data or {},
+            "audit_flags": [],
+            "audit_summary": "",
+        }
+
+    def test_no_flags_when_no_data(self):
+        """Sem stats → sem flags; summary indica 'nenhuma inconsistência'."""
+        from agente.nodes.auditor import auditor_node
+
+        result = auditor_node(self._base_state())
+        assert result["audit_flags"] == []
+        assert "nenhuma inconsist" in result["audit_summary"].lower()
+
+    def test_flag_stale_data_critical(self):
+        """Dado com defasagem > 365 dias → flag CRÍTICO."""
+        from agente.nodes.auditor import auditor_node
+
+        stats = {
+            "ipca": {
+                "latest_value": 4.5, "latest_date": "2020-01-01",
+                "lag_days": 500, "zscore_latest": 0.3,
+                "percentile_rank": 55, "trend_3m": "estável",
+            }
+        }
+        result = auditor_node(self._base_state(historical_stats=stats))
+        flags_text = " ".join(result["audit_flags"])
+        assert "CRÍTICO" in flags_text, "Dado com 500 dias de defasagem deve gerar flag CRÍTICO"
+
+    def test_flag_stale_data_warning(self):
+        """Dado com defasagem entre 90 e 365 dias → flag de aviso (não crítico)."""
+        from agente.nodes.auditor import auditor_node
+
+        stats = {
+            "gini": {
+                "latest_value": 52.0, "latest_date": "2023-01-01",
+                "lag_days": 120, "zscore_latest": 0.1,
+                "percentile_rank": 50, "trend_3m": "estável",
+            }
+        }
+        result = auditor_node(self._base_state(historical_stats=stats))
+        flags_text = " ".join(result["audit_flags"])
+        assert "DEFASADO" in flags_text, "Dado com 120 dias deve gerar flag DEFASADO"
+        assert "CRÍTICO" not in flags_text
+
+    def test_flag_outlier_zscore_high(self):
+        """Z-score ≥ 2.5 deve gerar flag OUTLIER."""
+        from agente.nodes.auditor import auditor_node
+
+        stats = {
+            "selic": {
+                "latest_value": 26.0, "latest_date": "2025-01-01",
+                "lag_days": 10, "zscore_latest": 3.8,
+                "percentile_rank": 99, "trend_3m": "alta",
+            }
+        }
+        result = auditor_node(self._base_state(historical_stats=stats))
+        flags_text = " ".join(result["audit_flags"])
+        assert "OUTLIER" in flags_text, "Z-score 3.8 deve gerar flag OUTLIER HISTÓRICO"
+
+    def test_flag_juros_reais_extreme_high(self):
+        """Juros reais > 18% a.a. → flag EXTREMOS."""
+        from agente.nodes.auditor import auditor_node
+
+        dates = pd.date_range(end=pd.Timestamp.now(), periods=12, freq="MS")
+        df_jr = pd.DataFrame(
+            {"juros_reais": [0.22] * 12, "juros_reais_pct": [22.0] * 12},
+            index=dates,
+        )
+        result = auditor_node(self._base_state(derived_data={"juros_reais": df_jr}))
+        flags_text = " ".join(result["audit_flags"])
+        assert "EXTREMOS" in flags_text, "Juros reais 22% deve gerar flag EXTREMOS"
+
+    def test_flag_juros_reais_negative(self):
+        """Juros reais < -3% a.a. → flag NEGATIVOS."""
+        from agente.nodes.auditor import auditor_node
+
+        dates = pd.date_range(end=pd.Timestamp.now(), periods=12, freq="MS")
+        df_jr = pd.DataFrame(
+            {"juros_reais": [-0.05] * 12, "juros_reais_pct": [-5.0] * 12},
+            index=dates,
+        )
+        result = auditor_node(self._base_state(derived_data={"juros_reais": df_jr}))
+        flags_text = " ".join(result["audit_flags"])
+        assert "NEGATIVOS" in flags_text, "Juros reais -5% deve gerar flag NEGATIVOS"
+
+    def test_flag_juros_reais_normal_range_produces_info_flag(self):
+        """Juros reais dentro do intervalo normal (ex: 7%) → flag informativo (não crítico)."""
+        from agente.nodes.auditor import auditor_node
+
+        dates = pd.date_range(end=pd.Timestamp.now(), periods=12, freq="MS")
+        df_jr = pd.DataFrame(
+            {"juros_reais": [0.07] * 12, "juros_reais_pct": [7.0] * 12},
+            index=dates,
+        )
+        result = auditor_node(self._base_state(derived_data={"juros_reais": df_jr}))
+        flags_text = " ".join(result["audit_flags"])
+        # Flag informativo deve existir, mas sem EXTREMOS ou NEGATIVOS
+        assert "EXTREMOS" not in flags_text
+        assert "NEGATIVOS" not in flags_text
+        assert "JUROS REAIS" in flags_text, "Flag informativo de juros reais deve aparecer"
+
+    def test_multiple_flags_counted_in_summary(self):
+        """audit_summary deve informar o número correto de avisos."""
+        from agente.nodes.auditor import auditor_node
+
+        # Dois problemas: dado defasado crítico + outlier extremo
+        stats = {
+            "ipca": {
+                "latest_value": 25.0, "latest_date": "2019-01-01",
+                "lag_days": 400, "zscore_latest": 4.5,
+                "percentile_rank": 99, "trend_3m": "alta",
+            }
+        }
+        result = auditor_node(self._base_state(historical_stats=stats))
+        assert len(result["audit_flags"]) >= 2, "Devem ser gerados >= 2 flags distintos"
+        # Summary deve conter o contador de avisos
+        assert "aviso" in result["audit_summary"].lower()
+
+    def test_taylor_flag_when_selic_high_and_ipca_rising(self):
+        """Selic > 10% com IPCA em tendência de alta → alerta Taylor/tensão monetária."""
+        from agente.nodes.auditor import auditor_node
+
+        stats = {
+            "432": {
+                "latest_value": 13.75, "latest_date": "2025-01-01",
+                "lag_days": 15, "zscore_latest": 1.0,
+                "percentile_rank": 70, "trend_3m": "estável",
+            },
+            "ipca": {
+                "latest_value": 0.82, "latest_date": "2025-01-01",
+                "lag_days": 15, "zscore_latest": 1.5,
+                "percentile_rank": 75, "trend_3m": "alta",
+            },
+        }
+        result = auditor_node(self._base_state(historical_stats=stats))
+        flags_text = " ".join(result["audit_flags"])
+        assert "TENSÃO" in flags_text or "Taylor" in flags_text, (
+            "Selic 13.75% + IPCA em alta deve gerar alerta de tensão monetária (Taylor)"
+        )
