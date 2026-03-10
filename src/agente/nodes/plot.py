@@ -10,6 +10,7 @@ Saída    → state["plot_path"]
 """
 import logging
 import os
+import re
 from pathlib import Path
 
 import matplotlib
@@ -132,6 +133,17 @@ def _resolve_label(series_name, state: AgentState = None):
         pass
 
     label_info = _SERIES_LABELS.get(series_key)
+
+    # Strip sufixo _N de duplicatas (ex: "432_2" → 432 = "Taxa Selic Meta")
+    if label_info is None:
+        base = re.sub(r"_\d+$", "", str(series_name))
+        if base != str(series_name):
+            try:
+                base_key: object = int(base)
+            except ValueError:
+                base_key = base
+            label_info = _SERIES_LABELS.get(base_key)
+
     if label_info is None and state is not None:
         tool_params = state.get("tool_params") or {}
         tool_name = state.get("tool_to_use", "")
@@ -141,6 +153,14 @@ def _resolve_label(series_name, state: AgentState = None):
             label_info = _SERIES_LABELS.get(tool_params.get("series_code", ""))
 
     return label_info if label_info else (str(series_name), "Valor")
+
+
+def _question_title(state: AgentState, max_len: int = 90) -> str:
+    """Retorna a pergunta do usuário truncada para uso como título de figura."""
+    q = (state.get("question") or "").strip() if state is not None else ""
+    if len(q) > max_len:
+        q = q[:max_len].rsplit(" ", 1)[0] + "…"
+    return q
 
 
 def _draw_mean_line(ax, mean_value: float, label: str = "Média histórica") -> None:
@@ -247,7 +267,19 @@ def _plot_single(df: "pd.DataFrame", state: AgentState, plot_path: str,
     if mean_ref is not None:
         _draw_mean_line(ax, mean_ref)
 
-    ax.set_title(display_name, fontsize=16, fontweight="bold", pad=15)
+    # Título: pergunta do usuário como linha principal, indicador como linha 2
+    question = _question_title(state)
+    period_str = (
+        f"{series.index.min().strftime('%b/%Y')} – {series.index.max().strftime('%b/%Y')}"
+    )
+    if question:
+        ax.set_title(
+            f"{question}\n{display_name}  |  {period_str}",
+            fontsize=11, fontweight="bold", pad=12, loc="left",
+        )
+    else:
+        ax.set_title(display_name, fontsize=14, fontweight="bold", pad=12)
+
     ax.set_xlabel("Data", fontsize=12)
     ax.set_ylabel(y_unit, fontsize=12)
     ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m"))
@@ -258,8 +290,7 @@ def _plot_single(df: "pd.DataFrame", state: AgentState, plot_path: str,
 
     fig.text(
         0.5, 0.01,
-        f"Fonte: Agente Macro-BR | Período: "
-        f"{series.index.min().strftime('%b/%Y')} – {series.index.max().strftime('%b/%Y')}",
+        f"Fonte: Agente Macro-BR | {display_name} | Período: {period_str}",
         ha="center", fontsize=8, color="gray",
     )
 
@@ -290,11 +321,14 @@ def _plot_multi(df: "pd.DataFrame", state: AgentState, plot_path: str,
     if n == 1:
         axes = [axes]
 
-    # Título geral com nomes de todos os indicadores
+    # Título: pergunta do usuário na linha 1, nomes de indicadores na linha 2
     labels = [_resolve_label(col, state)[0] for col in df.columns]
+    question = _question_title(state)
+    indicators_str = " × ".join(labels[:3]) + (" × …" if len(labels) > 3 else "")
+    suptitle = f"{question}\n{indicators_str}" if question else f"Análise Comparativa\n{indicators_str}"
     fig.suptitle(
-        "Análise Comparativa: " + " × ".join(labels),
-        fontsize=13,
+        suptitle,
+        fontsize=12,
         fontweight="bold",
         y=0.99,
     )
@@ -334,14 +368,15 @@ def _plot_multi(df: "pd.DataFrame", state: AgentState, plot_path: str,
         ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m"))
         ax.tick_params(axis="x", rotation=25)
 
-    # Rodapé global
+    # Rodapé global (usa nomes de display, não códigos)
+    display_names = [_resolve_label(c, state)[0] for c in df.columns if not df[c].dropna().empty]
     periods = [
         f"{df[c].dropna().index.min().strftime('%b/%Y')}–{df[c].dropna().index.max().strftime('%b/%Y')}"
         for c in df.columns if not df[c].dropna().empty
     ]
     fig.text(
         0.5, 0.005,
-        "Fonte: Agente Macro-BR | " + " | ".join(f"{c}: {p}" for c, p in zip(df.columns, periods)),
+        "Fonte: Agente Macro-BR | " + " | ".join(f"{n}: {p}" for n, p in zip(display_names, periods)),
         ha="center", fontsize=7, color="gray",
     )
 
@@ -399,13 +434,16 @@ def _plot_with_derived(
     if n_total == 1:
         axes = [axes]
 
-    # Título geral
+    # Título: pergunta na linha 1, nomes dos indicadores na linha 2
     all_names = (
         [_resolve_label(c, state)[0] for c in raw_cols]
         + [p[2] for p in derived_panels]
     )
+    question = _question_title(state)
+    indicators_str = " × ".join(all_names[:3]) + (" × …" if len(all_names) > 3 else "")
+    suptitle = f"{question}\n{indicators_str}" if question else indicators_str
     fig.suptitle(
-        " × ".join(all_names[:3]) + (" × …" if len(all_names) > 3 else ""),
+        suptitle,
         fontsize=12,
         fontweight="bold",
         y=0.995,

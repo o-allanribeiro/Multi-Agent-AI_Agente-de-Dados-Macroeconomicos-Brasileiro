@@ -232,6 +232,47 @@ class TestPlotNode:
             header = f.read(8)
         assert header == b"\x89PNG\r\n\x1a\n", "Arquivo salvo não é um PNG válido"
 
+    def test_resolve_label_strips_suffix(self):
+        """_resolve_label deve resolver '432_2' para o nome da Selic, não o código bruto."""
+        from agente.nodes.plot import _resolve_label
+
+        display, unit = _resolve_label("432_2")
+        assert "432_2" not in display, f"Título ainda contém código bruto: {display!r}"
+        assert "Selic" in display
+
+    def test_resolve_label_strips_suffix_unknown(self):
+        """_resolve_label retorna o nome original para sufixo sem mapa."""
+        from agente.nodes.plot import _resolve_label
+
+        display, unit = _resolve_label("99999_3")
+        # Deve retornar algum string (não quebrar), sem expor o código estranho como título ideal
+        assert isinstance(display, str)
+
+    def test_plot_title_uses_question(self, mock_state_with_data, tmp_path):
+        """Gráfico de série única deve usar a pergunta do usuário como título."""
+        from agente.nodes.plot import plot_node
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+
+        state = {**mock_state_with_data, "question": "Qual a evolução do IPCA em 2024?"}
+        captured_title = {}
+
+        orig_savefig = plt.savefig
+        def mock_savefig(path, **kwargs):
+            fig = plt.gcf()
+            texts = [t.get_text() for t in fig.texts] + [ax.get_title() for ax in fig.axes]
+            captured_title["all"] = " ".join(texts)
+            orig_savefig(path, **kwargs)
+
+        with patch("agente.nodes.plot.get_settings") as ms, \
+             patch("agente.nodes.plot.plt.savefig", side_effect=mock_savefig):
+            ms.return_value.agent_output_dir = str(tmp_path)
+            plot_node(state)
+
+        assert "IPCA" in captured_title.get("all", ""), \
+            "Título da figura não contém referência à pergunta do usuário"
+
 
 class TestResponseNode:
     """Testes do nó de resposta."""
