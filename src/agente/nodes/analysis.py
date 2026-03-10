@@ -32,23 +32,23 @@ Você é um economista sênior do Banco Central do Brasil com vasta experiência
 em análise de conjuntura macroeconômica.
 
 Sua tarefa é analisar os dados de uma série temporal e fornecer um resumo
-analítico conciso de 2 a 3 parágrafos.
+analítico técnico adequado a relatórios governamentais e acadêmicos.
 
-Inclua obrigatoriamente:
-1. Tendência geral no período (alta, queda, estabilidade, volatilidade)
-2. Valor mais recente e data correspondente
-3. Valores mínimo e máximo históricos do período
-4. Contexto econômico relevante que explique os movimentos principais
-5. Se indicado no resumo que os dados têm DEFASAGEM, mencione explicitamente
-   o período de referência e alerte o leitor de que o dado não é atual.
+ESTRUTURA DO RESUMO ANALÍTICO:
+1. **Tendência e Regime**: tendência geral no período (alta, queda, estabilidade, volatilidade),
+   identificando mudanças de regime se houver.
+2. **Estatísticas Relevantes**: valor mais recente, data, mínimo e máximo históricos, média, desvio.
+3. **Contexto de Política Econômica**: fatores que explicam os movimentos principais (COPOM,
+   choques externos, COVID-19, ciclos eleitorais, etc.).
+4. **Qualidade dos Dados**: Se o resumo indicar DEFASAGEM, mencione explicitamente e alerte o leitor.
+   Se houver outliers ou anomalias nas estatísticas, comente.
 
 {theory_section}
 
 {historical_context}
 
-Seja direto, técnico e baseie-se ESTRITAMENTE nos dados fornecidos.
-Use linguagem formal adequada a relatórios governamentais, porém compreensível
-para um leitor sem formação estritamente econômica.
+Baseie-se ESTRITAMENTE nos dados fornecidos. Use linguagem técnica formal.
+Não invente números além dos presentes no resumo estatístico abaixo.
 
 Resumo Estatístico:
 {data_summary}
@@ -58,23 +58,24 @@ _SYSTEM_PROMPT_MULTI = """\
 Você é um economista sênior do Banco Central do Brasil com vasta experiência
 em análise de conjuntura macroeconômica.
 
-Sua tarefa é fazer uma análise COMPARATIVA entre os múltiplos indicadores abaixo.
+Sua tarefa é fazer uma análise COMPARATIVA entre os múltiplos indicadores abaixo,
+adequada a relatórios acadêmicos e documentos de política econômica.
 
-Estruture a análise em:
-1. Comportamento individual de cada indicador (tendência, min, max, último valor)
-2. Relação e correlação entre os indicadores no período analisado
-3. Implicações de política econômica da combinação desses dados
-4. Para qualquer indicador com DEFASAGEM indicada, alerte explicitamente sobre o
-   período de referência e que o dado não reflete a situação atual.
-5. SE HOUVER indicadores derivados calculados (juros_reais, cambio_real etc.),
-   destaque o resultado e explique a fórmula utilizada.
+ESTRUTURA DA ANÁLISE COMPARATIVA:
+1. **Comportamento Individual**: para cada indicador — tendência, min, max, último valor.
+2. **Relação entre Indicadores**: correlação aparente, causalidade, defasagens observáveis.
+3. **Indicadores Derivados**: se houver juros_reais ou cambio_real, destaque o resultado,
+   explique a fórmula utilizada (Fisher, PPP) e compare com a série bruta.
+4. **Implicações de Política Econômica**: o que a combinação desses dados implica para
+   a política monetária, fiscal ou cambial do Brasil.
+5. **Qualidade dos Dados**: Para indicadores com DEFASAGEM, alerte explicitamente;
+   comente outliers ou anomalias identificadas.
 
 {theory_section}
 
 {historical_context}
 
-Seja direto, técnico e baseie-se ESTRITAMENTE nos dados fornecidos.
-Use linguagem formal adequada a relatórios governamentais.
+Baseie-se ESTRITAMENTE nos dados fornecidos. Use linguagem técnica formal.
 
 Resumo Estatístico (múltiplas séries):
 {data_summary}
@@ -195,6 +196,7 @@ def analysis_node(state: AgentState) -> AgentState:
     # Carrega base teórica para cada série presente no DataFrame
     # ------------------------------------------------------------------
     theory_parts = []
+    seen_topics = set()
     for col in df.columns:
         # Tenta resolver via series_code direto (nome da coluna)
         series_code = col
@@ -203,8 +205,17 @@ def analysis_node(state: AgentState) -> AgentState:
             series_code = tool_params.get("series_code") or col
 
         content = get_theory_for_tool(tool_name, series_code)
-        if content:
+        if content and content not in seen_topics:
             theory_parts.append(content)
+            seen_topics.add(content)
+
+    # Inclui teoria para indicadores derivados (juros_reais, cambio_real)
+    for name, derived_df in derived_data.items():
+        for col in derived_df.columns:
+            content = get_theory_for_tool("derived", col)
+            if content and content not in seen_topics:
+                theory_parts.append(content)
+                seen_topics.add(content)
 
     if theory_parts:
         theory_section = (

@@ -24,15 +24,42 @@ Você é um assistente especializado em análise de dados macroeconômicos brasi
 produzindo relatórios para uso governamental e acadêmico.
 
 Sua tarefa é sintetizar a análise técnica fornecida em uma resposta final
-clara, bem estruturada e acessível para diferentes públicos.
+estruturada, com rigor científico e acessível a diferentes públicos.
 
-DIRETRIZES:
-- Use linguagem formal mas acessível (evite jargões excessivos)
-- Estruture a resposta com parágrafos bem definidos
-- Destaque os números mais relevantes
-- Seja objetivo: máximo 3 parágrafos
+ESTRUTURA OBRIGATÓRIA DA RESPOSTA (use Markdown):
+
+## Síntese
+Parágrafo de 3–5 linhas resumindo o achado principal com os números mais relevantes.
+
+## Metodologia e Fonte dos Dados
+- Fonte(s): informe a origem dos dados (BCB/SGS, IBGE/SIDRA, IPEA, Banco Mundial).
+- Série(s): código(s) utilizado(s) (ex: BCB série 432 – Taxa Selic Meta).
+- Período analisado e frequência (mensal, trimestral, anual).
+- Método de cálculo (se houver indicador derivado, ex: Identidade de Fisher).
+
+## Análise
+2–3 parágrafos com tendências, valores extremos, mudanças de regime, contexto de política econômica.
+Incorpore avisos de qualidade de dados (defasagem, outliers, flags de auditoria) se presentes no contexto.
+
+## Referências Teóricas
+Liste 2–4 referências relevantes no formato:
+- **Fisher (1930)** — *The Theory of Interest*: explica a relação juro nominal vs. real.
+- **BCB** — Notas de Política Monetária: sobre a Selic e metas.
+- Etc. Adapte às séries presentes na análise.
+
+## Limitações
+- Descreva claramente o que o agente NÃO possui (ex: dados do Boletim Focus, expectativas futuras,
+  dados regionais, dados de empresas individuais).
+- Se a pergunta original continha aspectos fora do escopo, mencione explicitamente.
+- Máximo 3 itens.
+
+REGRAS ADICIONAIS:
 - {plot_instruction}
-- Responda em português do Brasil
+- Responda em português do Brasil.
+- Se a análise técnica já contém avisos de auditoria, incorpore-os naturalmente.
+- Se os dados têm DEFASAGEM indicada, alerte explicitamente na Síntese.
+- Use linguagem formal mas acessível; evite jargões sem explicação.
+- Nunca invente números além dos fornecidos na análise técnica.
 """
 
 
@@ -53,13 +80,36 @@ def response_node(state: AgentState) -> AgentState:
     logger.info("Executando nó RESPONSE | session=%s", state.get("session_id"))
 
     # Caso sem dados (ferramenta = none ou erro anterior)
-    if state.get("error") and not state.get("analysis"):
-        state["response"] = (
-            "Não foi possível responder a esta pergunta com os dados disponíveis. "
-            "O agente suporta consultas sobre: IPCA, Taxa Selic, Taxa de Desocupação, "
-            "Dólar PTAX, FBCF e Coeficiente de Gini para o Brasil. "
-            "Tente reformular sua pergunta com palavras-chave desses indicadores."
+    tool_is_none = (state.get("tool_to_use") or "none") == "none"
+    no_analysis = not state.get("analysis")
+    if (state.get("error") or tool_is_none) and no_analysis:
+        plan = state.get("plan", "")
+        # Constrói resposta cortês com contexto do plano
+        out_of_scope_msg = (
+            "## Fora do escopo atual do agente\n\n"
+            "Sua pergunta é válida e relevante, mas os dados necessários para respondê-la "
+            "**não estão disponíveis neste agente**.\n\n"
         )
+        if plan:
+            out_of_scope_msg += f"> {plan}\n\n"
+        out_of_scope_msg += (
+            "## O que este agente pode responder\n\n"
+            "| Categoria | Indicadores disponíveis |\n"
+            "|---|---|\n"
+            "| **Inflação** | IPCA mensal (BCB 433), IPCA 12 meses (BCB 188), IPCA-E (BCB 13522) |\n"
+            "| **Juros** | Taxa Selic Meta (BCB 432), Selic Over (BCB 11), **Juros Reais** (Fisher) |\n"
+            "| **Câmbio** | Dólar PTAX (BCB 1), Euro/Real (BCB 4189), **Câmbio Real bilateral** |\n"
+            "| **Atividade** | PIB trimestral (IBGE), FBCF — índice (IPEA) |\n"
+            "| **Mercado de trabalho** | Taxa de Desocupação (PNAD Contínua, BCB 24369) |\n"
+            "| **Desigualdade** | Coeficiente de Gini — Brasil (Banco Mundial) |\n\n"
+            "## Limitações conhecidas\n\n"
+            "- ❌ **Boletim Focus / expectativas de mercado**: projeções de IPCA, Selic e câmbio esperados "
+            "não estão disponíveis (requerem acesso à API do Focus/BCB).\n"
+            "- ❌ **Dados regionais**: apenas índices nacionais.\n"
+            "- ❌ **Dados de empresas, setores ou títulos individuais**: fora do escopo.\n\n"
+            "Tente reformular sua pergunta com os indicadores listados acima."
+        )
+        state["response"] = out_of_scope_msg
         return state
 
     settings = get_settings()

@@ -282,19 +282,24 @@
         // ──────────────────────────────────────────────
         // Chips de sugestões
         // ──────────────────────────────────────────────
-        document.querySelectorAll('.suggestion').forEach(btn => {
-            btn.addEventListener('click', () => {
-                const q = btn.textContent.trim();
-                messageInput.value = q;
-                messageInput.focus();
-                chatForm.requestSubmit();
+        function bindChips(container) {
+            (container || document).querySelectorAll('.suggestion').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    if (submitButton.disabled) return; // bloqueia durante request em andamento
+                    const q = btn.textContent.trim();
+                    messageInput.value = q;
+                    messageInput.focus();
+                    chatForm.requestSubmit();
+                });
             });
-        });
+        }
+        bindChips();  // bind chips iniciais
 
         // ──────────────────────────────────────────────
         // Nova Conversa
         // ──────────────────────────────────────────────
         newChatBtn.addEventListener('click', () => {
+            if (submitButton.disabled) return; // bloqueia durante request em andamento
             chatWindow.innerHTML = `
                 <div id="welcome-block" class="flex items-start gap-3">
                     <div class="w-9 h-9 rounded-full bg-slate-700 flex items-center justify-center
@@ -311,14 +316,7 @@
                 </div>`;
             sessionCostTotal = 0;
             sessionCostEl.textContent = '$0.000000';
-            // Rebinda os chips recém-criados
-            chatWindow.querySelectorAll('.suggestion').forEach(btn => {
-                btn.addEventListener('click', () => {
-                    messageInput.value = btn.textContent.trim();
-                    messageInput.focus();
-                    chatForm.requestSubmit();
-                });
-            });
+            bindChips(chatWindow);  // rebinda chips recém-criados
         });
 
         // ──────────────────────────────────────────────

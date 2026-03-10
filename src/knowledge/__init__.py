@@ -25,6 +25,8 @@ _TOOL_TO_KNOWLEDGE: dict[str, str] = {
     "get_gini_series": "gini",
     # IBGE
     "get_ibge_series": None,         # resolvido dinamicamente pelo series_code
+    # Derivados (Onda 3) — resolvido pelo col name no _SERIES_TO_KNOWLEDGE
+    "derived": None,
 }
 
 # Mapeamento direto por series_code/chave
@@ -43,6 +45,10 @@ _SERIES_TO_KNOWLEDGE: dict = {
     "rendimento_pnad": "desocupacao",
     # IPEA keys
     "GAC12_INDFBCF12": "fbcf_pib",
+    # Indicadores derivados (Onda 3)
+    "juros_reais_pct": "juros_reais",
+    "cambio_real_idx": "dolar",
+    "cambio_nominal":  "dolar",
 }
 
 
