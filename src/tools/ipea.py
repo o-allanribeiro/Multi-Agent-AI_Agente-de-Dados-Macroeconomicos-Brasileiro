@@ -16,6 +16,8 @@ import pandas as pd
 import requests
 
 from tools.base import DataSource
+from tools.cache import get_series_cache, make_cache_key
+from utils.http import with_retry
 from utils.validators import validate_series_code
 
 logger = logging.getLogger(__name__)
@@ -76,8 +78,24 @@ class IPEADataSource(DataSource):
         url = _BASE_URL.format(series_code=series_code)
         logger.info("Consultando IPEADATA | série=%s", series_code)
 
+        # Tenta cache (IPEA não tem filtro incremental — cache reduz carga)
+        cache = get_series_cache()
+        cache_key = make_cache_key("ipea", series_code)
+        cached_df, is_fresh = cache.get(cache_key)
+        if is_fresh:
+            logger.info("IPEA cache hit: %s", series_code)
+            return cached_df
+
         try:
-            response = requests.get(url, headers=_HEADERS, timeout=timeout)
+            response = with_retry(
+                lambda: requests.get(url, headers=_HEADERS, timeout=timeout),
+                max_retries=3,
+                base_delay=1.5,
+                exc_types=(
+                    requests.exceptions.Timeout,
+                    requests.exceptions.ConnectionError,
+                ),
+            )
             response.raise_for_status()
             data = response.json()
 
@@ -94,6 +112,7 @@ class IPEADataSource(DataSource):
             df = df.set_index("Date").sort_index()
 
             self._log_success(series_code, len(df))
+            cache.set(cache_key, df, frequency="mensal")
             return df
 
         except requests.exceptions.RequestException as exc:

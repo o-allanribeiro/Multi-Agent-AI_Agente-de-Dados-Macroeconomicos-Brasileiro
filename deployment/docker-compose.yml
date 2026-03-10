@@ -59,6 +59,22 @@ services:
     profiles:
       - test   # só executa com: docker compose --profile test up tests
 
+  # ---------------------------------------------------------------------------
+  # DynamoDB Local — emulador AWS para testes sem custo
+  # Acesso externo (host):    http://localhost:8001
+  # Acesso interno (docker):  http://dynamodb-local:8000
+  # Para criar a tabela: python scripts/setup_dynamodb_local.py
+  # ---------------------------------------------------------------------------
+  dynamodb-local:
+    image: amazon/dynamodb-local:latest
+    container_name: dynamodb-local
+    restart: unless-stopped
+    command: ["-jar", "DynamoDBLocal.jar", "-inMemory", "-sharedDb", "-port", "8000"]
+    ports:
+      - "8001:8000"
+    profiles:
+      - dynamodb   # ativa com: docker compose --profile dynamodb up
+
 volumes:
   output_data:
     driver: local

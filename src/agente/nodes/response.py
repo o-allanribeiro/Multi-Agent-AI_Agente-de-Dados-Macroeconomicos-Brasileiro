@@ -31,7 +31,7 @@ DIRETRIZES:
 - Estruture a resposta com parágrafos bem definidos
 - Destaque os números mais relevantes
 - Seja objetivo: máximo 3 parágrafos
-- Se um gráfico foi gerado, mencione-o ao final
+- {plot_instruction}
 - Responda em português do Brasil
 """
 
@@ -71,10 +71,10 @@ def response_node(state: AgentState) -> AgentState:
         convert_system_message_to_human=True,
     )
 
-    plot_note = (
-        "\n\nUm gráfico de visualização foi gerado e está disponível junto a esta resposta."
+    plot_instruction = (
+        "Ao final, informe que um gráfico de visualização foi gerado e está disponível."
         if state.get("plot_path")
-        else ""
+        else "Não foi gerado gráfico nesta consulta."
     )
 
     prompt = ChatPromptTemplate.from_messages(
@@ -82,6 +82,7 @@ def response_node(state: AgentState) -> AgentState:
             ("system", _SYSTEM_PROMPT),
             (
                 "human",
+                "Contexto da consulta: {plan}\n\n"
                 "Análise técnica gerada:\n{analysis}\n\n"
                 "Formule a resposta final para a pergunta original: {question}",
             ),
@@ -93,11 +94,13 @@ def response_node(state: AgentState) -> AgentState:
     try:
         response = chain.invoke(
             {
+                "plan": state.get("plan", ""),
                 "analysis": state.get("analysis", "Análise não disponível."),
                 "question": state["question"],
+                "plot_instruction": plot_instruction,
             }
         )
-        state["response"] = response + plot_note
+        state["response"] = response
         logger.info(
             "Resposta gerada | session=%s | chars=%d",
             state.get("session_id"),
@@ -107,8 +110,6 @@ def response_node(state: AgentState) -> AgentState:
     except Exception as exc:
         logger.error("Erro no nó RESPONSE: %s", exc, exc_info=True)
         # Fallback: entrega a análise bruta se a síntese falhar
-        state["response"] = (
-            state.get("analysis", "Não foi possível gerar uma resposta.") + plot_note
-        )
+        state["response"] = state.get("analysis", "Não foi possível gerar uma resposta.")
 
     return state

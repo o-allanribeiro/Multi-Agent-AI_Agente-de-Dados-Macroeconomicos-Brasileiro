@@ -23,23 +23,26 @@ logger = logging.getLogger(__name__)
 _SYSTEM_PROMPT = """\
 Você é um economista especialista e assistente de pesquisa macroeconômica do Brasil.
 Sua tarefa é analisar a pergunta do usuário e criar um plano de ação detalhado,
-escolhendo a melhor ferramenta disponível para responder a pergunta.
+identificando TODAS as ferramentas necessárias para responder completamente.
 
 Ferramentas disponíveis:
 {tools_description}
 
 REGRAS:
-- Escolha APENAS UMA ferramenta por vez.
+- Para perguntas simples (um indicador), use UMA ferramenta.
+- Para comparações ("compare X com Y") ou análises multi-indicador, use 2 ou mais ferramentas.
 - Se a pergunta não puder ser respondida com as ferramentas disponíveis, use "none".
-- Para o parâmetro last_n_years, interprete a pergunta:
-  "últimos 2 anos" → 2, "desde 2020" → calcule os anos até hoje, "histórico completo" → 10.
-- Sempre inclua os parâmetros necessários em "tool_params".
+- Para last_n_years: "últimos 2 anos" → 2, "desde 2020" → calcule até hoje, "histórico" → 10.
+- Sempre inclua os parâmetros necessários em "tool_params" de cada ferramenta.
+- Use o mesmo last_n_years para todas as ferramentas de uma comparação.
 
 Responda APENAS com JSON válido no seguinte formato:
 {{
-  "plan": "<descrição do que você vai fazer>",
-  "tool_to_use": "<nome_da_ferramenta ou 'none'>",
-  "tool_params": {{<parâmetros da ferramenta ou null>}}
+  "plan": "<descrição detalhada do que você vai fazer>",
+  "tools": [
+    {{"tool_to_use": "<nome_da_ferramenta ou 'none'>", "tool_params": {{<parâmetros>}}}},
+    {{"tool_to_use": "<segunda_ferramenta se necessário>", "tool_params": {{<parâmetros>}}}}
+  ]
 }}
 """
 
@@ -88,13 +91,37 @@ def planner_node(state: AgentState) -> AgentState:
         )
 
         state["plan"] = result.get("plan", "Plano não gerado.")
-        state["tool_to_use"] = result.get("tool_to_use", "none")
-        state["tool_params"] = result.get("tool_params") or {}
+
+        # Suporta novo formato {"tools": [...]} e legado {"tool_to_use": ..., "tool_params": ...}
+        tools_list = result.get("tools")
+        if not tools_list:
+            tools_list = [
+                {
+                    "tool_to_use": result.get("tool_to_use", "none"),
+                    "tool_params": result.get("tool_params") or {},
+                }
+            ]
+
+        # Valida e normaliza — garante que todos os itens têm as chaves necessárias
+        valid_tools = [
+            {"tool_to_use": t.get("tool_to_use", "none"), "tool_params": t.get("tool_params") or {}}
+            for t in tools_list
+            if isinstance(t, dict)
+        ]
+        if not valid_tools:
+            valid_tools = [{"tool_to_use": "none", "tool_params": {}}]
+
+        # Primeira ferramenta é executada imediatamente; as demais entram na fila
+        state["tool_to_use"] = valid_tools[0]["tool_to_use"]
+        state["tool_params"] = valid_tools[0]["tool_params"]
+        state["pending_tools"] = valid_tools[1:]
 
         logger.info(
-            "Plano gerado | tool=%s | params=%s",
+            "Plano gerado | %d ferramenta(s) | first=%s | params=%s | pending=%d",
+            len(valid_tools),
             state["tool_to_use"],
             state["tool_params"],
+            len(state["pending_tools"]),
         )
 
     except Exception as exc:
@@ -102,5 +129,6 @@ def planner_node(state: AgentState) -> AgentState:
         state["error"] = f"Falha no planejamento: {exc}"
         state["tool_to_use"] = "none"
         state["tool_params"] = {}
+        state["pending_tools"] = []
 
     return state

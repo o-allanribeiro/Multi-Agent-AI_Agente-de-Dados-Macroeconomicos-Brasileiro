@@ -54,14 +54,22 @@ class DynamoDBBackend(StorageBackend):
             self._table_name = table_name
             self._ttl_days = ttl_days
 
-            dynamodb = boto3.resource(
-                "dynamodb",
+            # DynamoDB Local ignora credenciais, mas boto3 exige que sejam fornecidas.
+            # Credenciais fake são seguras aqui pois só afetam o emulador local.
+            is_local = endpoint_url is not None and "localhost" in endpoint_url
+            kwargs = dict(
                 region_name=region,
                 endpoint_url=endpoint_url,
             )
+            if is_local:
+                kwargs["aws_access_key_id"] = "fakeKeyId"
+                kwargs["aws_secret_access_key"] = "fakeSecretKey"
+
+            dynamodb = boto3.resource("dynamodb", **kwargs)
             self._table = dynamodb.Table(table_name)
             logger.info(
-                "DynamoDBBackend inicializado | table=%s | region=%s", table_name, region
+                "DynamoDBBackend inicializado | table=%s | region=%s | local=%s",
+                table_name, region, is_local,
             )
         except ImportError:
             raise RuntimeError(
@@ -75,6 +83,8 @@ class DynamoDBBackend(StorageBackend):
         )
         item = record.to_dict()
         item["expires_at"] = expires_at
+        # Chave de particionamento fixa para o GSI de listing ordenado
+        item["entity_type"] = "conversation"
 
         self._table.put_item(Item=item)
         logger.debug("Conversa salva no DynamoDB | session=%s", record.session_id)
@@ -98,13 +108,43 @@ class DynamoDBBackend(StorageBackend):
 
     def list_recent(self, limit: int = 20) -> List[ConversationRecord]:
         """
-        Lista conversas recentes.
+        Lista conversas recentes usando o GSI 'RecentConversationsIndex'.
 
-        TODO (Fase B): Implementar com GSI (Global Secondary Index) por timestamp.
-        Por ora, retorna lista vazia para não quebrar a interface.
+        O GSI usa entity_type (HASH fix='conversation') e timestamp (RANGE)
+        para retornar dados ordenados por recença sem full table scan.
+        Complexidade: O(limit) em vez de O(N) da tabela inteira.
+
+        Requer que a tabela tenha sido criada via setup_dynamodb_local.py.
+        Retorna lista vazia em caso de erro para nunca quebrar a interface.
         """
-        logger.warning("DynamoDBBackend.list_recent() requer GSI — não implementado ainda.")
-        return []
+        try:
+            from boto3.dynamodb.conditions import Key
+
+            response = self._table.query(
+                IndexName="RecentConversationsIndex",
+                KeyConditionExpression=Key("entity_type").eq("conversation"),
+                ScanIndexForward=False,   # DESC: mais recente primeiro
+                Limit=limit,
+            )
+            items = response.get("Items", [])
+
+            return [
+                ConversationRecord(
+                    session_id=r["session_id"],
+                    question=r.get("question", ""),
+                    response=r.get("response", ""),
+                    has_data=r.get("has_data", False),
+                    has_plot=r.get("has_plot", False),
+                    error=r.get("error"),
+                    timestamp=datetime.fromisoformat(
+                        r["timestamp"] if "timestamp" in r else datetime.now(timezone.utc).isoformat()
+                    ),
+                )
+                for r in items
+            ]
+        except Exception as exc:
+            logger.error("DynamoDBBackend.list_recent() falhou: %s", exc)
+            return []
 
     def health_check(self) -> bool:
         """Verifica acessibilidade da tabela DynamoDB."""

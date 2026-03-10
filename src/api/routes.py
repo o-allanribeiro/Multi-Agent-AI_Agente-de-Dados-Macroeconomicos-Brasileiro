@@ -10,13 +10,17 @@ Endpoints:
 """
 import base64
 import logging
+import time
 import uuid
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 
 from agente.agent import run_agent
 from agente.config import get_settings
+from api.limiter import limiter
 from api.schemas import HealthResponse, QueryRequest, QueryResponse
+from storage import ConversationRecord, get_storage
+from utils.cost_tracker import log_request_cost
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +44,8 @@ async def health_check() -> HealthResponse:
 
 
 @router.post("/ask", response_model=QueryResponse, tags=["Agente"])
-async def ask_agent(query: QueryRequest) -> QueryResponse:
+@limiter.limit("10/minute")
+async def ask_agent(request: Request, query: QueryRequest) -> QueryResponse:
     """
     Submete uma pergunta ao agente de análise macroeconômica.
 
@@ -53,6 +58,7 @@ async def ask_agent(query: QueryRequest) -> QueryResponse:
     - "Como está o Coeficiente de Gini no Brasil?"
     """
     session_id = query.session_id or str(uuid.uuid4())[:8]
+    start_time = time.perf_counter()
 
     logger.info(
         "Nova requisição | session=%s | question='%s'",
@@ -62,6 +68,7 @@ async def ask_agent(query: QueryRequest) -> QueryResponse:
 
     try:
         final_state = run_agent(question=query.question, session_id=session_id)
+        duration_ms = (time.perf_counter() - start_time) * 1000
 
         # Codifica o gráfico em Base64 se existir
         plot_base64: str | None = None
@@ -81,11 +88,45 @@ async def ask_agent(query: QueryRequest) -> QueryResponse:
                     exc,
                 )
 
+        # Loga estimativa de custo da requisição
+        # n_tools = número de séries únicas coletadas (colunas do DataFrame final)
+        data_df = final_state.get("data")
+        n_tools = len(data_df.columns) if data_df is not None and not data_df.empty else 1
+        tools_used = [str(c) for c in data_df.columns] if data_df is not None and not data_df.empty else [final_state.get("tool_to_use", "unknown")]
+        log_request_cost(
+            session_id=session_id,
+            tools_used=tools_used,
+            has_data=final_state.get("data") is not None,
+            has_plot=plot_base64 is not None,
+            duration_ms=duration_ms,
+        )
+
+        response_text = final_state.get("response") or "Não foi possível gerar uma resposta."
+        has_data = final_state.get("data") is not None
+        has_plot = plot_base64 is not None
+
+        # Persiste conversa no storage configurado (SQLite ou DynamoDB)
+        try:
+            storage = get_storage()
+            storage.save(
+                ConversationRecord(
+                    session_id=session_id,
+                    question=query.question,
+                    response=response_text,
+                    has_data=has_data,
+                    has_plot=has_plot,
+                    error=final_state.get("error"),
+                )
+            )
+            logger.debug("Conversa persistida | session=%s | backend=%s", session_id, type(storage).__name__)
+        except Exception as exc_storage:
+            logger.warning("Falha ao persistir conversa | session=%s | error=%s", session_id, exc_storage)
+
         return QueryResponse(
             session_id=session_id,
-            text=final_state.get("response") or "Não foi possível gerar uma resposta.",
+            text=response_text,
             plot_base64=plot_base64,
-            has_data=final_state.get("data") is not None,
+            has_data=has_data,
             error=final_state.get("error"),
         )
 

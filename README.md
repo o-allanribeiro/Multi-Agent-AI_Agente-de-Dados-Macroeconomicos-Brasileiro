@@ -3,113 +3,239 @@
 
 # 🤖 Agente de IA para Análise de Dados Macroeconômicos do Brasil
 
+> **Stack:** Python 3.11 · LangGraph · Gemini 2.5 Flash · FastAPI · SQLite/DynamoDB  
+> **Status:** Desenvolvimento ativo — pipeline multi-ferramenta com cache e análise comparativa
+
 ## Resumo
 
-Este projeto acadêmico de código aberto demonstra a construção de um agente de Inteligência Artificial autônomo, utilizando a arquitetura **LangGraph** e o poder do modelo de linguagem **Gemini** do Google. O objetivo é criar um assistente de pesquisa interativo, acessível via interface web, capaz de responder a perguntas em linguagem natural sobre a conjuntura econômica do Brasil, buscando dados de fontes oficiais, realizando análises e gerando visualizações de forma autônoma.
+Este projeto acadêmico de código aberto demonstra a construção de um agente de Inteligência Artificial autônomo capaz de responder perguntas em linguagem natural sobre a conjuntura econômica do Brasil. O agente busca dados de fontes oficiais, aplica contexto teórico econômico, gera análises textuais e produz visualizações — tudo de forma autônoma via pipeline LangGraph + Gemini.
 
-## Missão e Escopo
+Suporta perguntas simples ("Qual a Selic atual?") e perguntas comparativas multi-indicador ("Compare a Selic com o IPCA dos últimos 2 anos") com subplots automáticos.
 
-O propósito central deste agente é democratizar o acesso e a análise de dados macroeconômicos brasileiros, servindo como uma ferramenta prática e visual para estudantes, pesquisadores e analistas.
+---
 
-### Objetivo Principal
+## Indicadores Cobertos
 
-O agente é projetado para compreender perguntas formuladas em português, como:
+| Indicador | Código | Fonte |
+|---|---|---|
+| IPCA — Variação Mensal | 433 | BCB/SGS |
+| Taxa Selic Meta (COPOM) | 432 | BCB/SGS |
+| Taxa de Desocupação (PNAD) | 24369 | BCB/SGS |
+| Taxa de Câmbio — Dólar PTAX | 1 | BCB/SGS |
+| PIB Trimestral (variação %) | `pib_trimestral` | IBGE/SIDRA |
+| IPCA-15 (prévia de inflação) | `ipca15` | IBGE/SIDRA |
+| Rendimento Médio Real PNAD | `rendimento_pnad` | IBGE/SIDRA |
+| Formação Bruta de Capital Fixo | `GAC12_INDFBCF12` | IPEADATA |
+| Coeficiente de Gini | `SI.POV.GINI` | Banco Mundial |
 
-> "Como está a inflação acumulada no Brasil este ano?"
+---
 
-> "Qual a trajetória da taxa Selic desde o início do governo atual?"
+## Arquitetura do Pipeline
 
-> "Gere um gráfico mostrando a evolução do Coeficiente de Gini."
+```
+Pergunta do Usuário
+        │
+  ┌─────▼──────┐
+  │  Planner   │  Gemini → JSON com lista de ferramentas [{tool, params}, ...]
+  └─────┬──────┘
+        │  (itera para cada ferramenta na fila)
+  ┌─────▼──────┐
+  │   Action   │  Executa ferramenta → acumula DataFrames (com retry + cache)
+  └─────┬──────┘
+        │  pending_tools vazia?
+        │  sim → continua │ não → loop de volta ao Action
+  ┌─────▼──────┐
+  │  Analysis  │  Gemini com teoria econômica + aviso automático de defasagem
+  └─────┬──────┘
+  ┌─────▼──────┐
+  │    Plot    │  Matplotlib: série única ou subplots por indicador
+  └─────┬──────┘
+  ┌─────▼──────┐
+  │  Response  │  Gemini sintetiza análise → resposta final em PT-BR
+  └─────┬──────┘
+        ▼
+   API Response (JSON: text + plot_base64)
+```
 
-A resposta final não se limita a um número, mas consiste em uma análise textual concisa acompanhada de uma visualização de dados (gráfico) relevante, tudo apresentado em uma interface de chat.
+**Camadas de suporte:**
+- `src/tools/cache.py` — Cache SQLite de séries temporais (TTL por frequência)
+- `src/utils/http.py` — Retry com backoff exponencial (3 tentativas)
+- `src/knowledge/` — Base teórica em Markdown (injetada no prompt de análise)
+- `src/storage/` — SQLite (dev) ou DynamoDB (prod) para histórico de conversas
 
-### Indicadores Centrais
+---
 
-Para garantir foco e eficácia, o escopo atual do agente cobre os seguintes indicadores fundamentais:
+## Como Executar
 
-  - **Inflação**: Índice Nacional de Preços ao Consumidor Amplo (IPCA).
-  - **Taxa de Juros**: Meta da Taxa Selic.
-  - **Mercado de Trabalho**: Taxa de Desocupação (PNAD Contínua).
-  - **Câmbio**: Taxa de Câmbio (Dólar PTAX - Venda).
-  - **Investimento**: Formação Bruta de Capital Fixo (FBCF).
-  - **Desigualdade**: Coeficiente de Gini.
+### Pré-requisitos
 
-### Fontes de Dados
+- Python 3.11+
+- Chave da Google AI Studio: [aistudio.google.com/app/apikey](https://aistudio.google.com/app/apikey)
 
-A credibilidade do agente é sustentada pela utilização exclusiva de APIs de instituições oficiais, garantindo precisão e atualidade:
-
-  - **Banco Central do Brasil (BCB)**: Via Sistema Gerenciador de Séries Temporais (SGS).
-  - **Instituto de Pesquisa Econômica Aplicada (IPEADATA)**: Fonte para dados de investimento.
-  - **Banco Mundial (World Bank)**: Fonte para o Coeficiente de Gini.
-
-## Arquitetura e Tecnologias
-
-O projeto é construído sobre uma arquitetura moderna que separa o backend (lógica do agente) do frontend (interface do usuário).
-
-  - **Estrutura de Agente (LangGraph)**: Orquestra o fluxo de trabalho do agente (Planejar -\> Agir -\> Analisar -\> Plotar -\> Responder).
-  - **Motor de Raciocínio (Google Gemini)**: Atua como o "cérebro" do agente, interpretando as perguntas, escolhendo as ferramentas e gerando as análises.
-  - **Backend (FastAPI)**: Um servidor web Python que expõe o agente como uma API, permitindo a comunicação com a interface web.
-  - **Frontend (HTML + Tailwind CSS + JavaScript)**: Uma interface de chat de página única que envia as perguntas do usuário para o servidor e exibe as respostas de forma interativa.
-
-## Como Executar o Projeto
-
-#### 1\. Clone o repositório
+### 1. Clonar e instalar
 
 ```bash
-# Adicione aqui o comando 'git clone' quando o repositório estiver no GitHub
 git clone https://github.com/o-allanribeiro/Multi-Agent-AI_Agente-de-Dados-Macroeconomicos-Brasileiro.git
-cd o-allanribeiro/Multi-Agent-AI_Agente-de-Dados-Macroeconomicos-Brasileiro```
+cd Multi-Agent-AI_Agente-de-Dados-Macroeconomicos-Brasileiro
 
-#### 2\. Crie e ative um ambiente virtual
+python -m venv .venv
 
-```bash
-# Crie o ambiente virtual
-python -m venv venv
-```
+# Windows (PowerShell)
+.\.venv\Scripts\Activate.ps1
 
-```bash
-# Ative o ambiente (Windows - PowerShell)
-.\venv\Scripts\Activate
-```
+# macOS/Linux
+source .venv/bin/activate
 
-```bash
-# Ative o ambiente (macOS/Linux)
-source venv/bin/activate
-```
-
-#### 3\. Instale as dependências
-
-```bash
 pip install -r requirements.txt
 ```
 
-#### 4\. Configure suas chaves de API
+### 2. Configurar variáveis de ambiente
 
-  - Abra o novo arquivo `.env` e adicione sua chave da API do Google AI Studio no formato:
-    ```
-    GOOGLE_API_KEY="sua_chave_aqui"
-    ```
+```bash
+copy .env.example .env   # Windows
+# cp .env.example .env   # macOS/Linux
+```
 
-#### 5\. Inicie o Servidor (Backend)
+Edite `.env` e preencha ao menos:
+```
+GOOGLE_API_KEY="sua_chave_aqui"
+```
 
-  - Navegue até a pasta `src`.
-    ```bash
-    cd src
-    ```
-  - Inicie o servidor FastAPI. Mantenha este terminal aberto.
-    ```bash0
-0,    python -m uvicorn server:app
-    ```
+### 3. Iniciar o servidor
 
-#### 6\. Abra a Interface (Frontend)
+```bash
+# Na raiz do projeto (não dentro de src/)
+$env:PYTHONPATH = "src"   # PowerShell
+# export PYTHONPATH=src   # bash
 
-  - Na pasta principal do projeto, abra o arquivo `index.html` diretamente no seu navegador de preferência.
+uvicorn src.asgi:app --reload --port 8000
+```
 
-## Como Interagir com o Agente
+### 4. Abrir a interface
 
-A interface de chat estará pronta para receber suas perguntas. O agente responde melhor a perguntas diretas que contenham as palavras-chave dos indicadores que ele conhece.
+Abra `index.html` diretamente no navegador. A interface se conecta ao servidor na porta 8000.
 
-Para uma lista detalhada de exemplos de perguntas que funcionam bem e para entender melhor as limitações atuais do agente, consulte o nosso guia:
+---
+
+## Perguntas de Exemplo
+
+```
+"Qual a evolução do IPCA nos últimos 2 anos?"
+"Me mostre a trajetória da Selic desde 2022."
+"Como está o Coeficiente de Gini no Brasil?"
+"Compare a Selic com o IPCA dos últimos 12 meses."
+"Qual o rendimento médio dos trabalhadores brasileiros?"
+"Me mostre o PIB trimestral dos últimos 3 anos."
+```
+
+Para mais exemplos, consulte [docs/PERGUNTAS_DEMO.md](docs/PERGUNTAS_DEMO.md).
+
+---
+
+## DynamoDB Local (opcional — para teste de persistência)
+
+Por padrão o agente usa SQLite. Para testar com DynamoDB Local:
+
+**Pré-requisito:** Java 11+ instalado. Se não tiver:
+
+```powershell
+winget install Microsoft.OpenJDK.21
+```
+
+**Iniciar DynamoDB Local:**
+
+```powershell
+.\scripts\start_dynamodb_local.ps1
+```
+
+**Criar tabela e índice:**
+
+```bash
+python scripts/setup_dynamodb_local.py
+```
+
+**Ativar no `.env`:**
+
+```
+STORAGE_BACKEND="dynamodb"
+DYNAMODB_ENDPOINT_URL="http://localhost:8001"
+AWS_REGION="us-east-1"
+DYNAMODB_TABLE_NAME="agente-macro-conversations"
+```
+
+> **Nota:** O DynamoDB Local roda em memória (`-inMemory`). Dados são perdidos ao reiniciar o processo. Para persistência local, edite `start_dynamodb_local.ps1` e remova `-inMemory`.
+
+---
+
+## Via Docker
+
+```bash
+cd deployment
+docker compose up --build
+```
+
+Para incluir DynamoDB Local no Docker:
+
+```bash
+docker compose --profile dynamodb up --build
+```
+
+---
+
+## Estrutura do Projeto
+
+```
+├── src/
+│   ├── agente/
+│   │   ├── agent.py          # Grafo LangGraph (pipeline com multi-tool loop)
+│   │   ├── state.py          # AgentState (TypedDict com pending_tools + datasets)
+│   │   ├── config.py         # Settings via Pydantic
+│   │   └── nodes/
+│   │       ├── planner.py    # Planner → lista de ferramentas
+│   │       ├── action.py     # Executor + next_tool_node (loop multi-ferramenta)
+│   │       ├── analysis.py   # Análise comparativa + aviso de defasagem
+│   │       ├── plot.py       # Matplotlib: single / subplots multi-série
+│   │       └── response.py   # Síntese final
+│   ├── tools/
+│   │   ├── bcb.py            # BCB/SGS (IPCA, Selic, Câmbio, Desocupação)
+│   │   ├── ibge.py           # IBGE/SIDRA (PIB, IPCA-15, Rendimento PNAD)
+│   │   ├── ipea.py           # IPEADATA (FBCF)
+│   │   ├── world_bank.py     # Banco Mundial (Gini)
+│   │   ├── registry.py       # ToolRegistry imutável
+│   │   └── cache.py          # Cache SQLite de séries (TTL por frequência)
+│   ├── knowledge/            # Teoria econômica em Markdown (injetada no LLM)
+│   ├── storage/
+│   │   ├── sqlite.py         # Backend SQLite (desenvolvimento)
+│   │   └── dynamodb.py       # Backend DynamoDB (produção / GSI query)
+│   ├── api/
+│   │   ├── server.py         # FastAPI factory + rate limiting (slowapi)
+│   │   ├── routes.py         # POST /ask (10 req/min) + custo estimado por req
+│   │   └── limiter.py        # Singleton do rate limiter
+│   └── utils/
+│       ├── http.py           # Retry com backoff exponencial
+│       └── cost_tracker.py   # Estimativa de custo Gemini por requisição
+├── scripts/
+│   ├── setup_dynamodb_local.py   # Cria tabela + GSI RecentConversationsIndex
+│   └── start_dynamodb_local.ps1  # Inicia DynamoDB Local
+├── deployment/
+│   └── docker-compose.yml
+├── docs/
+│   ├── PERGUNTAS_DEMO.md
+│   └── MOTIVACAO.md
+├── .env.example              # Template de variáveis (documentado por ambiente)
+├── requirements.txt
+└── index.html                # Frontend (HTML + Tailwind + JS)
+```
+
+---
+
+## Limitações Conhecidas
+
+- **Dados do Banco Mundial (Gini):** lag de 2-3 anos. O agente sinaliza automaticamente a defasagem na análise.
+- **Análise multi-indicador:** máximo de eficiência com 2-3 séries simultâneas. Perguntas muito amplas podem gerar respostas longas.
+- **Cache de séries:** dados são armazenados localmente em `output/series_cache.db`. Em ambientes com múltiplos workers, o cache SQLite não é compartilhado entre processos.
+
+---
 
 ### [➡️ Exemplos de Perguntas para Demonstração][def]
 

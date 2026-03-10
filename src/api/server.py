@@ -16,8 +16,12 @@ import time
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 
 from agente.config import get_settings
+from api.limiter import limiter
 from api.routes import router
 
 logger = logging.getLogger(__name__)
@@ -46,6 +50,13 @@ def create_app() -> FastAPI:
         redoc_url="/redoc" if not settings.is_production() else None,
         license_info={"name": "Apache 2.0", "url": "https://www.apache.org/licenses/LICENSE-2.0"},
     )
+
+    # -------------------------------------------------------------------------
+    # Rate Limiter (slowapi)
+    # -------------------------------------------------------------------------
+    app.state.limiter = limiter
+    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+    app.add_middleware(SlowAPIMiddleware)
 
     # -------------------------------------------------------------------------
     # Middleware de CORS

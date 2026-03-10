@@ -20,7 +20,9 @@ import pandas as pd
 from bcb import sgs
 
 from tools.base import DataSource
+from tools.cache import get_series_cache, make_cache_key
 from utils.date_utils import date_n_years_ago
+from utils.http import with_retry
 from utils.validators import validate_series_code, validate_year_range
 
 logger = logging.getLogger(__name__)
@@ -101,8 +103,23 @@ class BCBDataSource(DataSource):
         code = int(series_code)
         logger.info("Consultando BCB/SGS | série=%d | início=%s", code, start_date)
 
+        # Tenta cache antes da chamada de rede
+        cache = get_series_cache()
+        # Série diária (câmbio=1, 21619) vs mensal
+        _DAILY_BCB = {1, 21619, 11, 432}
+        freq = "diario" if int(code) in _DAILY_BCB else "mensal"
+        cache_key = make_cache_key("bcb", code, start=start_date, years=last_n_years)
+        cached_df, is_fresh = cache.get(cache_key)
+        if is_fresh:
+            logger.info("BCB cache hit: serie=%d", code)
+            return cached_df
+
         try:
-            df = sgs.get({str(code): code}, start=start_date)
+            df = with_retry(
+                lambda: sgs.get({str(code): code}, start=start_date),
+                max_retries=3,
+                base_delay=1.5,
+            )
 
             if df is None or df.empty:
                 self._log_empty(str(series_code))
@@ -111,6 +128,7 @@ class BCBDataSource(DataSource):
             df.index = pd.to_datetime(df.index)
             df = df.sort_index()
 
+            cache.set(cache_key, df, frequency=freq)
             self._log_success(str(series_code), len(df))
             return df
 

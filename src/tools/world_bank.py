@@ -16,6 +16,8 @@ import pandas as pd
 import wbgapi as wb
 
 from tools.base import DataSource
+from tools.cache import get_series_cache, make_cache_key
+from utils.http import with_retry
 
 logger = logging.getLogger(__name__)
 
@@ -68,11 +70,23 @@ class WorldBankDataSource(DataSource):
             end_year,
         )
 
+        # Cache longo para dados anuais (Banco Mundial atualiza 1-2x por ano)
+        cache = get_series_cache()
+        cache_key = make_cache_key("wb", series_code, country=country_code)
+        cached_df, is_fresh = cache.get(cache_key)
+        if is_fresh:
+            logger.info("World Bank cache hit: %s", series_code)
+            return cached_df
+
         try:
-            df_wide = wb.data.DataFrame(
-                series_code,
-                economy=country_code,
-                time=range(start_year, end_year + 1),
+            df_wide = with_retry(
+                lambda: wb.data.DataFrame(
+                    series_code,
+                    economy=country_code,
+                    time=range(start_year, end_year + 1),
+                ),
+                max_retries=3,
+                base_delay=2.0,
             )
 
             # Transforma formato wide (anos como colunas → YR1990, YR1991...)
@@ -101,6 +115,7 @@ class WorldBankDataSource(DataSource):
                 return None
 
             self._log_success(series_code, len(df_final))
+            cache.set(cache_key, df_final, frequency="anual")
             return df_final
 
         except Exception as exc:

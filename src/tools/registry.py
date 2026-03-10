@@ -7,6 +7,7 @@ Facilita extensão (Fase D: novas fontes) via registro dinâmico,
 sem necessidade de alterar o código do Planner.
 """
 import logging
+import types
 from functools import lru_cache
 from typing import Callable, Dict, Optional
 
@@ -34,6 +35,12 @@ _TOOLS_METADATA: Dict[str, Dict] = {
         "params": "country_code (str, padrão='BRA')",
         "mapping": "Série SI.POV.GINI — Brasil=BRA",
     },
+    "get_ibge_series": {
+        "description": "Dados do IBGE via API SIDRA (Sistema de Recuperação Automática).",
+        "use_for": "PIB trimestral, IPCA-15 (prévia do IPCA), Rendimento médio real PNAD",
+        "params": "series_code (str), last_n (int, default=20)",
+        "mapping": "PIB='pib_trimestral' | IPCA-15='ipca15' | Rendimento='rendimento_pnad'",
+    },
 }
 
 
@@ -58,15 +65,21 @@ class ToolRegistry:
     def __init__(self) -> None:
         # Importação local para evitar circular imports e carregar só quando necessário
         from tools.bcb import get_bcb_series
+        from tools.ibge import get_ibge_series
         from tools.ipea import get_ipea_series
         from tools.world_bank import get_gini_series
 
-        self._tools: Dict[str, Callable] = {
-            "get_bcb_series": get_bcb_series,
+        # Dicionário somente-leitura: impede mutações acidentais pós-inicialização,
+        # garantindo que o singleton compartilhado em ambiente async seja thread-safe.
+        self._tools: types.MappingProxyType = types.MappingProxyType({
+            "get_bcb_series":  get_bcb_series,
             "get_ipea_series": get_ipea_series,
             "get_gini_series": get_gini_series,
-        }
-        self._metadata: Dict[str, Dict] = _TOOLS_METADATA.copy()
+            "get_ibge_series": get_ibge_series,
+        })
+        self._metadata: types.MappingProxyType = types.MappingProxyType(
+            _TOOLS_METADATA
+        )
 
     def get(self, name: str) -> Optional[Callable]:
         """Retorna a função da ferramenta pelo nome, ou None se não existir."""
@@ -81,20 +94,21 @@ class ToolRegistry:
 
     def register(self, name: str, fn: Callable, metadata: Optional[Dict] = None) -> None:
         """
-        Registra uma nova ferramenta dinamicamente.
+        Registra uma nova ferramenta.
 
-        Parameters
-        ----------
-        name : str
-            Identificador único da ferramenta.
-        fn : Callable
-            Função de coleta de dados.
-        metadata : dict, optional
-            Metadados descritivos para o prompt do Planner.
+        IMPORTANTE: opera sobre o dict interno antes de congelar (apenas em testes/setup).
+        Não é thread-safe — deve ser chamado ANTES da primeira requisição (fase de startup).
         """
-        self._tools[name] = fn
+        # Cria novo proxy incluindo a nova entrada (MappingProxyType é imutável, recriamos)
+        tools_dict = dict(self._tools)
+        tools_dict[name] = fn
+        self._tools = types.MappingProxyType(tools_dict)
+
         if metadata:
-            self._metadata[name] = metadata
+            meta_dict = dict(self._metadata)
+            meta_dict[name] = metadata
+            self._metadata = types.MappingProxyType(meta_dict)
+
         logger.info("Ferramenta registrada: '%s'", name)
 
     def list_tools(self) -> list[str]:

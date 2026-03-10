@@ -17,6 +17,7 @@ from langgraph.graph import END, StateGraph
 from agente.nodes import (
     action_node,
     analysis_node,
+    next_tool_node,
     planner_node,
     plot_node,
     response_node,
@@ -45,6 +46,7 @@ def create_agent():
     # Registra os nós
     workflow.add_node("planner_step", planner_node)
     workflow.add_node("action_step", action_node)
+    workflow.add_node("next_tool_step", next_tool_node)
     workflow.add_node("analysis_step", analysis_node)
     workflow.add_node("plot_step", plot_node)
     workflow.add_node("response_step", response_node)
@@ -52,9 +54,24 @@ def create_agent():
     # Define o ponto de entrada
     workflow.set_entry_point("planner_step")
 
-    # Conexões lineares entre os nós
+    # planner → action (primeira ferramenta)
     workflow.add_edge("planner_step", "action_step")
-    workflow.add_edge("action_step", "analysis_step")
+
+    # Após action: decide se há mais ferramentas na fila
+    def _route_after_action(state: AgentState) -> str:
+        pending = state.get("pending_tools") or []
+        return "next_tool" if pending else "analysis"
+
+    workflow.add_conditional_edges(
+        "action_step",
+        _route_after_action,
+        {"next_tool": "next_tool_step", "analysis": "analysis_step"},
+    )
+
+    # next_tool → action (loop de multi-ferramenta)
+    workflow.add_edge("next_tool_step", "action_step")
+
+    # Conclusão linear
     workflow.add_edge("analysis_step", "plot_step")
     workflow.add_edge("plot_step", "response_step")
     workflow.add_edge("response_step", END)
@@ -95,6 +112,8 @@ def run_agent(question: str, session_id: str | None = None) -> AgentState:
         "plan": None,
         "tool_to_use": None,
         "tool_params": None,
+        "pending_tools": [],
+        "datasets": [],
         "intermediate_steps": [],
         "data": None,
         "analysis": None,

@@ -1,14 +1,18 @@
 # -*- coding: utf-8 -*-
 """
-Nó de Ação (Action) — Agente Macro-BR.
+Nó de Ação (Action) e Próxima Ferramenta (NextTool) — Agente Macro-BR.
 
-Responsabilidade: executar a ferramenta de dados selecionada pelo Planner
-e armazenar o DataFrame resultante no estado.
+Responsabilidade:
+  - action_node: executar a ferramenta selecionada e acumular os resultados.
+  - next_tool_node: desempilhar a próxima ferramenta da fila e preparar o estado.
 
 Entrada  → state["tool_to_use"], state["tool_params"]
-Saída    → state["data"]
+Saída    → state["data"], state["datasets"]  (action_node)
+           state["tool_to_use"], state["tool_params"], state["pending_tools"]  (next_tool_node)
 """
 import logging
+
+import pandas as pd
 
 from agente.state import AgentState
 from tools.registry import get_tool_registry
@@ -16,9 +20,35 @@ from tools.registry import get_tool_registry
 logger = logging.getLogger(__name__)
 
 
+def _merge_datasets(dfs: list) -> pd.DataFrame:
+    """
+    Junta múltiplos DataFrames num único DF wide usando outer join no DatetimeIndex.
+
+    Renomeia colunas duplicadas com sufixo numérico (_1, _2, ...) para evitar
+    ValueError quando duas ferramentas retornam a mesma série (ex: BCB 432 × 432).
+    """
+    if not dfs:
+        return pd.DataFrame()
+    if len(dfs) == 1:
+        return dfs[0]
+
+    result = dfs[0].copy()
+    for i, df in enumerate(dfs[1:], start=2):
+        # Renomear colunas do df que colidem com o result existente
+        overlap = set(result.columns) & set(df.columns)
+        if overlap:
+            rename_map = {col: f"{col}_{i}" for col in overlap}
+            df = df.rename(columns=rename_map)
+        result = result.join(df, how="outer")
+    return result.sort_index()
+
+
 def action_node(state: AgentState) -> AgentState:
     """
-    Nó de Ação: executa a ferramenta de coleta de dados.
+    Nó de Ação: executa a ferramenta de coleta de dados e acumula resultados.
+
+    Ao final, atualiza state["data"] com o merge de todas as séries coletadas
+    até o momento (incluindo iterações anteriores via state["datasets"]).
 
     Parameters
     ----------
@@ -28,7 +58,8 @@ def action_node(state: AgentState) -> AgentState:
     Returns
     -------
     AgentState
-        Estado atualizado com 'data' (DataFrame) ou com 'error' em caso de falha.
+        Estado atualizado com 'data' (DataFrame mesclado) e 'datasets'
+        (nova entrada adicionada pelo reducer operator.add).
     """
     logger.info("Executando nó ACTION | session=%s", state.get("session_id"))
 
@@ -58,11 +89,20 @@ def action_node(state: AgentState) -> AgentState:
             logger.warning("Ferramenta retornou DataFrame vazio para: %s", tool_name)
             state["error"] = "A consulta não retornou dados para o período solicitado."
         else:
-            state["data"] = result_df
-            logger.info("Dados armazenados | shape=%s", result_df.shape)
+            # Acumula com datasets anteriores (operator.add no reducer do LangGraph)
+            prev_datasets: list = state.get("datasets") or []
+            merged = _merge_datasets(prev_datasets + [result_df])
+            state["data"] = merged
+            # Retorna apenas o novo DF — o reducer appenda à lista acumulada
+            state["datasets"] = [result_df]
+            logger.info(
+                "Dados acumulados | nova_série=%s | total_colunas=%d | shape=%s",
+                result_df.columns[0],
+                len(merged.columns),
+                merged.shape,
+            )
 
     except TypeError as exc:
-        # Parâmetros incorretos passados para a ferramenta
         logger.error("Parâmetros inválidos para '%s': %s", tool_name, exc, exc_info=True)
         state["error"] = f"Parâmetros inválidos para a ferramenta '{tool_name}': {exc}"
     except Exception as exc:
@@ -70,3 +110,36 @@ def action_node(state: AgentState) -> AgentState:
         state["error"] = f"Erro na coleta de dados: {exc}"
 
     return state
+
+
+def next_tool_node(state: AgentState) -> AgentState:
+    """
+    Nó de Próxima Ferramenta: desempilha o próximo item da fila pending_tools.
+
+    Executado após action_node quando há ferramentas restantes na fila.
+    Prepara tool_to_use e tool_params para a próxima iteração do action_node.
+
+    Parameters
+    ----------
+    state : AgentState
+        Estado com 'pending_tools' não-vazio.
+
+    Returns
+    -------
+    AgentState
+        Estado com tool_to_use, tool_params e pending_tools atualizados.
+    """
+    pending = list(state.get("pending_tools") or [])
+    if pending:
+        next_tool = pending[0]
+        state["tool_to_use"] = next_tool.get("tool_to_use", "none")
+        state["tool_params"] = next_tool.get("tool_params") or {}
+        state["pending_tools"] = pending[1:]
+        logger.info(
+            "Próxima ferramenta preparada | tool=%s | params=%s | restantes=%d",
+            state["tool_to_use"],
+            state["tool_params"],
+            len(state["pending_tools"]),
+        )
+    return state
+

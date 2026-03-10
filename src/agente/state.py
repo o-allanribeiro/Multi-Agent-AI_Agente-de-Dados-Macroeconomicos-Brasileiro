@@ -7,7 +7,7 @@ tipado para passar informações entre etapas do fluxo.
 """
 
 import operator
-from typing import Annotated, List, Optional
+from typing import Annotated, Any, List, Optional
 
 import pandas as pd
 from langchain_core.messages import BaseMessage
@@ -28,13 +28,21 @@ class AgentState(TypedDict):
     plan : Optional[str]
         Plano de ação gerado pelo Nó de Planejamento.
     tool_to_use : Optional[str]
-        Nome da ferramenta selecionada pelo planner.
+        Nome da ferramenta a ser executada na próxima iteração.
     tool_params : Optional[dict]
         Parâmetros a serem passados para a ferramenta.
+    pending_tools : Optional[List[dict]]
+        Fila de ferramentas pendentes para execução em cadeia.
+        Cada item: {"tool_to_use": str, "tool_params": dict}.
+        Populada pelo Planner para perguntas multi-indicador.
+    datasets : Annotated[List[Any], operator.add]
+        Lista acumulativa de DataFrames coletados por cada chamada de ferramenta.
+        Usa operator.add para crescer a cada iteração do Action node.
     intermediate_steps : List[BaseMessage]
         Log de execução acumulativo (operator.add = append-only).
     data : Optional[pd.DataFrame]
-        Série temporal retornada pela ferramenta de dados.
+        DataFrame mesclado (outer join) de todos os datasets coletados.
+        Atualizado após cada ferramenta executada.
     analysis : Optional[str]
         Análise textual gerada pelo LLM a partir dos dados.
     plot_path : Optional[str]
@@ -50,6 +58,8 @@ class AgentState(TypedDict):
     plan: Optional[str]
     tool_to_use: Optional[str]
     tool_params: Optional[dict]
+    pending_tools: Optional[List[dict]]
+    datasets: Annotated[List[Any], operator.add]
     intermediate_steps: Annotated[List[BaseMessage], operator.add]
     data: Optional[pd.DataFrame]
     analysis: Optional[str]

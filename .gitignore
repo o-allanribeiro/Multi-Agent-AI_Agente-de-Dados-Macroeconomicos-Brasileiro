@@ -5,28 +5,24 @@
 !.env.example
 
 # Ambientes virtuais
-# Contêm todas as bibliotecas instaladas e são específicas da sua máquina.
 venv/
 .venv/
 env/
 virtualenv/
 
 # Cache e arquivos compilados do Python
-# Gerados automaticamente pelo Python para otimizar a execução.
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
 
 # Pastas de distribuição e build
-# Geradas ao empacotar seu projeto.
 build/
 dist/
 *.egg-info/
 *.egg
 
 # Arquivos e pastas de IDEs e editores de código
-# Configurações específicas do seu ambiente de desenvolvimento.
 .vscode/
 .idea/
 *.swp
@@ -35,9 +31,9 @@ dist/
 .pytest_cache/
 .coverage
 htmlcov/
+coverage.xml
 
 # Arquivos de sistema operacional
-# Gerados por macOS, Windows, etc.
 .DS_Store
 Thumbs.db
 
@@ -45,14 +41,48 @@ Thumbs.db
 *.db
 *.sqlite3
 
+# Cache de séries temporais (gerado pelo SeriesCache — regenerável)
+output/series_cache.db
+
 # Gráficos e artefatos gerados pelo agente
 output/
 src/output/
+!output/.gitkeep
 
 # Relatórios de cobertura de testes
 htmlcov/
 .coverage
 coverage.xml
+
+# mypy
+.mypy_cache/
+*.pyi.cache
+
+# DynamoDB Local (binários e metadados — baixar separadamente, não versionar)
+dynamodb_local_latest/
+*.jar
+DynamoDBLocal_lib/
+dynamodb-local-metadata.json
+
+# Logs da aplicação
+*.log
+api.log
+api_err.log
+
+# Terraform / IaC (estado local — NUNCA commitar)
+*.tfstate
+*.tfstate.backup
+.terraform/
+.terraform.lock.hcl
+
+# Docker volumes locais
+docker-volumes/
+
+# Chaves e certificados
+*.pem
+*.key
+*.crt
+*.p12
 
 # mypy
 .mypy_cache/
