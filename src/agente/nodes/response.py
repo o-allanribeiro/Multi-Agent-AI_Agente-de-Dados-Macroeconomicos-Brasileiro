@@ -84,6 +84,7 @@ def response_node(state: AgentState) -> AgentState:
                 "human",
                 "Contexto da consulta: {plan}\n\n"
                 "Análise técnica gerada:\n{analysis}\n\n"
+                "{audit_block}"
                 "Formule a resposta final para a pergunta original: {question}",
             ),
         ]
@@ -91,20 +92,33 @@ def response_node(state: AgentState) -> AgentState:
 
     chain = prompt | llm | StrOutputParser()
 
+    # Bloco de auditoria: inclui flags se existirem
+    audit_summary = state.get("audit_summary") or ""
+    audit_block = (
+        f"\n{audit_summary}\n\n"
+        "INSTRUÇÃO: Se houver avisos de auditoria acima, incorpore-os naturalmente "
+        "na resposta final, alertando o leitor sobre inconsistências ou contexto "
+        "histórico relevante.\n\n"
+        if audit_summary
+        else ""
+    )
+
     try:
         response = chain.invoke(
             {
-                "plan": state.get("plan", ""),
-                "analysis": state.get("analysis", "Análise não disponível."),
-                "question": state["question"],
+                "plan":        state.get("plan", ""),
+                "analysis":    state.get("analysis", "Análise não disponível."),
+                "question":    state["question"],
                 "plot_instruction": plot_instruction,
+                "audit_block": audit_block,
             }
         )
         state["response"] = response
         logger.info(
-            "Resposta gerada | session=%s | chars=%d",
+            "Resposta gerada | session=%s | chars=%d | audit_flags=%d",
             state.get("session_id"),
             len(state["response"]),
+            len(state.get("audit_flags") or []),
         )
 
     except Exception as exc:

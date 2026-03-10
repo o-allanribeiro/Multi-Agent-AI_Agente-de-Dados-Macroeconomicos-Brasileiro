@@ -44,6 +44,8 @@ Inclua obrigatoriamente:
 
 {theory_section}
 
+{historical_context}
+
 Seja direto, técnico e baseie-se ESTRITAMENTE nos dados fornecidos.
 Use linguagem formal adequada a relatórios governamentais, porém compreensível
 para um leitor sem formação estritamente econômica.
@@ -64,8 +66,12 @@ Estruture a análise em:
 3. Implicações de política econômica da combinação desses dados
 4. Para qualquer indicador com DEFASAGEM indicada, alerte explicitamente sobre o
    período de referência e que o dado não reflete a situação atual.
+5. SE HOUVER indicadores derivados calculados (juros_reais, cambio_real etc.),
+   destaque o resultado e explique a fórmula utilizada.
 
 {theory_section}
+
+{historical_context}
 
 Seja direto, técnico e baseie-se ESTRITAMENTE nos dados fornecidos.
 Use linguagem formal adequada a relatórios governamentais.
@@ -161,9 +167,25 @@ def analysis_node(state: AgentState) -> AgentState:
     tool_params = state.get("tool_params") or {}
 
     # ------------------------------------------------------------------
+    # Contexto histórico (calculado pelo stats_node)
+    # ------------------------------------------------------------------
+    historical_context = state.get("historical_stats_text") or ""
+
+    # Dados derivados (juros_reais, cambio_real etc.) calculados pelo stats_node
+    derived_data = state.get("derived_data") or {}
+    derived_summaries = []
+    for name, derived_df in derived_data.items():
+        for col in derived_df.columns:
+            derived_summaries.append(_build_series_summary(derived_df, col))
+    if derived_summaries:
+        is_multi = True  # trata como multi quando há derivados
+
+    # ------------------------------------------------------------------
     # Constrói resumo estatístico (por série) com detecção de defasagem
     # ------------------------------------------------------------------
     summaries = [_build_series_summary(df, col) for col in df.columns]
+    if derived_summaries:
+        summaries.extend(derived_summaries)
     data_summary = (
         f"Plano de consulta: {plan_context}\n\n"
         + "\n\n".join(summaries)
@@ -209,9 +231,10 @@ def analysis_node(state: AgentState) -> AgentState:
     try:
         analysis = chain.invoke(
             {
-                "data_summary": data_summary,
-                "theory_section": theory_section,
-                "question": state["question"],
+                "data_summary":       data_summary,
+                "theory_section":     theory_section,
+                "historical_context": historical_context,
+                "question":           state["question"],
             }
         )
         state["analysis"] = analysis

@@ -66,3 +66,9 @@ class AgentState(TypedDict):
     plot_path: Optional[str]
     response: Optional[str]
     error: Optional[str]
+    # --- Onda 3: contexto histórico e auditoria ---
+    historical_stats: Optional[dict]
+    historical_stats_text: Optional[str]
+    derived_data: Optional[dict]
+    audit_flags: Optional[List[str]]
+    audit_summary: Optional[str]

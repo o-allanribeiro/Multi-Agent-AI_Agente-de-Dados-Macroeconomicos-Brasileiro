@@ -28,13 +28,32 @@ identificando TODAS as ferramentas necessárias para responder completamente.
 Ferramentas disponíveis:
 {tools_description}
 
-REGRAS:
+REGRAS GERAIS:
 - Para perguntas simples (um indicador), use UMA ferramenta.
 - Para comparações ("compare X com Y") ou análises multi-indicador, use 2 ou mais ferramentas.
 - Se a pergunta não puder ser respondida com as ferramentas disponíveis, use "none".
 - Para last_n_years: "últimos 2 anos" → 2, "desde 2020" → calcule até hoje, "histórico" → 10.
 - Sempre inclua os parâmetros necessários em "tool_params" de cada ferramenta.
 - Use o mesmo last_n_years para todas as ferramentas de uma comparação.
+
+INDICADORES DERIVADOS (requerem 2 séries primárias):
+Alguns indicadores são CALCULADOS a partir de séries primárias via Python após a coleta:
+
+  - "juros reais" / "taxa real de juros" / "juro efetivo real" / "selic real":
+      → Buscar OBRIGATORIAMENTE: Selic (BCB série 432) + IPCA (BCB série 433)
+      → Fórmula Fisher: juros_reais = (1 + Selic) / (1 + IPCA_acum_12m) - 1
+      → NÃO responder apenas com Selic ou apenas com IPCA — o resultado é derivado de AMBOS.
+
+  - "câmbio real" / "taxa real de câmbio" / "poder de compra do real":
+      → Buscar OBRIGATORIAMENTE: Dólar PTAX (BCB série 1) + IPCA (BCB série 433)
+      → Não responder apenas com o câmbio nominal.
+
+EXEMPLOS DE MAPEAMENTO:
+  "Qual o juro real?"           → tools: [Selic/432, IPCA/433]
+  "Juros reais no Brasil"       → tools: [Selic/432, IPCA/433]
+  "Compare Selic e IPCA"        → tools: [Selic/432, IPCA/433]
+  "Desigualdade vs PIB"         → tools: [Gini, PIB-IBGE]
+  "Evolução do câmbio real"    → tools: [Dolar/1, IPCA/433]
 
 Responda APENAS com JSON válido no seguinte formato:
 {{
