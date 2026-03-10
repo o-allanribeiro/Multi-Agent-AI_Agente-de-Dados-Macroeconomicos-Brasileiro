@@ -1,71 +1,122 @@
 
------
+# Agente de IA para Análise de Dados Macroeconômicos do Brasil
 
-# 🤖 Agente de IA para Análise de Dados Macroeconômicos do Brasil
+> **Stack:** Python 3.11 · LangGraph 0.0.57 · Gemini 2.5 Flash · FastAPI · SQLite/DynamoDB  
+> **Versão:** Onda 3 — pipeline de 8 nós com auditor, contexto histórico e indicadores derivados  
+> **Status:** Desenvolvimento ativo
 
-> **Stack:** Python 3.11 · LangGraph · Gemini 2.5 Flash · FastAPI · SQLite/DynamoDB  
-> **Status:** Desenvolvimento ativo — pipeline multi-ferramenta com cache e análise comparativa
+---
 
-## Resumo
+## O que é este projeto?
 
-Este projeto acadêmico de código aberto demonstra a construção de um agente de Inteligência Artificial autônomo capaz de responder perguntas em linguagem natural sobre a conjuntura econômica do Brasil. O agente busca dados de fontes oficiais, aplica contexto teórico econômico, gera análises textuais e produz visualizações — tudo de forma autônoma via pipeline LangGraph + Gemini.
+Agente de Inteligência Artificial autônomo que responde perguntas em **linguagem natural** sobre a conjuntura macroeconômica brasileira. O agente:
 
-Suporta perguntas simples ("Qual a Selic atual?") e perguntas comparativas multi-indicador ("Compare a Selic com o IPCA dos últimos 2 anos") com subplots automáticos.
+1. **Interpreta** a pergunta e planeja quais dados buscar
+2. **Coleta** dados de APIs oficiais (BCB, IPEA, IBGE, Banco Mundial)
+3. **Calcula** indicadores derivados (juros reais via Identidade de Fisher, câmbio real via PPP)
+4. **Contextualiza** com estatísticas históricas: média 1/3/5 anos, z-score, percentil, tendência OLS
+5. **Analisa** com LLM embasado em teoria econômica (Regra de Taylor, Curva de Phillips, Solow...)
+6. **Audita** consistência macroeconômica via regras Python puras (sem alucinação)
+7. **Sintetiza** a resposta com visualização automática
+
+```
+Pergunta → Planner → Action(es) → Stats → Analysis → Auditor → Plot → Resposta
+```
+
+---
+
+## Índice da Documentação
+
+| Documento | Conteúdo |
+|---|---|
+| **Este README** | Visão geral, quickstart, indicadores, exemplos |
+| [docs/FUNDAMENTO_CIENTIFICO.md](docs/FUNDAMENTO_CIENTIFICO.md) | Modelos econométricos, fórmulas, referências de graduação |
+| [docs/ARQUITETURA.md](docs/ARQUITETURA.md) | Pipeline LangGraph, estado, diagrama de componentes |
+| [docs/GUIA_DESENVOLVIMENTO.md](docs/GUIA_DESENVOLVIMENTO.md) | Setup local, testes, como adicionar indicadores/nós |
+| [docs/GUIA_INSTALACAO.md](docs/GUIA_INSTALACAO.md) | Instalação passo a passo (local + Docker + AWS) |
+| [docs/MOTIVACAO.md](docs/MOTIVACAO.md) | Contexto acadêmico, justificativa e fontes |
+| [docs/PERGUNTAS_DEMO.md](docs/PERGUNTAS_DEMO.md) | 30+ perguntas de exemplo organizadas por tema |
+| [docs/CHANGELOG.md](docs/CHANGELOG.md) | Histórico de versões (Onda 1–3) |
+| [src/knowledge/](src/knowledge/) | Base teórica por indicador (injetada nos prompts) |
+
+---
 
 ---
 
 ## Indicadores Cobertos
 
-| Indicador | Código | Fonte |
+| Indicador | Série | Fonte | Frequência |
+|---|---|---|---|
+| IPCA — Variação Mensal | 433 | BCB/SGS | Mensal |
+| Taxa Selic Meta (COPOM) | 432 | BCB/SGS | Diária/mensal |
+| Taxa de Desocupação (PNAD) | 24369 | BCB/SGS | Trimestral |
+| Taxa de Câmbio — Dólar PTAX | 1 | BCB/SGS | Diária |
+| PIB Trimestral (variação %) | `pib_trimestral` | IBGE/SIDRA | Trimestral |
+| IPCA-15 (prévia de inflação) | `ipca15` | IBGE/SIDRA | Mensal |
+| Rendimento Médio Real PNAD | `rendimento_pnad` | IBGE/SIDRA | Trimestral |
+| Formação Bruta de Capital Fixo | `GAC12_INDFBCF12` | IPEADATA | Mensal |
+| Coeficiente de Gini | `SI.POV.GINI` | Banco Mundial | Anual |
+| **Juros Reais (derivado)** | 432 + 433 | BCB calculado | Mensal |
+| **Câmbio Real (derivado)** | 1 + 433 | BCB calculado | Diária |
+
+---
+
+## Fundamento Científico
+
+O agente implementa modelos de **Ciências Econômicas** diretamente em Python:
+
+| Modelo | Implementação | Referência |
 |---|---|---|
-| IPCA — Variação Mensal | 433 | BCB/SGS |
-| Taxa Selic Meta (COPOM) | 432 | BCB/SGS |
-| Taxa de Desocupação (PNAD) | 24369 | BCB/SGS |
-| Taxa de Câmbio — Dólar PTAX | 1 | BCB/SGS |
-| PIB Trimestral (variação %) | `pib_trimestral` | IBGE/SIDRA |
-| IPCA-15 (prévia de inflação) | `ipca15` | IBGE/SIDRA |
-| Rendimento Médio Real PNAD | `rendimento_pnad` | IBGE/SIDRA |
-| Formação Bruta de Capital Fixo | `GAC12_INDFBCF12` | IPEADATA |
-| Coeficiente de Gini | `SI.POV.GINI` | Banco Mundial |
+| Identidade de Fisher | `(1+Selic)/(1+IPCA_12m)−1` | Fisher (1930) |
+| Regra de Taylor | Auditor: Selic↑↓ vs IPCA aceleração | Taylor (1993) |
+| Regressão OLS | `np.polyfit` — tendência 3 meses | Wooldridge, cap. 3 |
+| Z-score padronizado | $(y_T - \bar{y})/\sigma$ | Gujarati, cap. 4 |
+| Percentil empírico (ECDF) | `scipy.stats.percentileofscore` | Distribuição empírica |
+| IPCA acumulado 12m | Produto composto rolling 12 meses | Teoria monetária |
+| Câmbio real (PPP) | $(E_t/E_0) \times (P_t^{BR}/P_0^{BR}) \times 100$ | Cassel (1916) |
+
+> Documentação completa em [docs/FUNDAMENTO_CIENTIFICO.md](docs/FUNDAMENTO_CIENTIFICO.md)
 
 ---
 
 ## Arquitetura do Pipeline
 
 ```
-Pergunta do Usuário
-        │
-  ┌─────▼──────┐
-  │  Planner   │  Gemini → JSON com lista de ferramentas [{tool, params}, ...]
-  └─────┬──────┘
-        │  (itera para cada ferramenta na fila)
-  ┌─────▼──────┐
-  │   Action   │  Executa ferramenta → acumula DataFrames (com retry + cache)
-  └─────┬──────┘
-        │  pending_tools vazia?
-        │  sim → continua │ não → loop de volta ao Action
-  ┌─────▼──────┐
-  │  Analysis  │  Gemini com teoria econômica + aviso automático de defasagem
-  └─────┬──────┘
-  ┌─────▼──────┐
-  │    Plot    │  Matplotlib: série única ou subplots por indicador
-  └─────┬──────┘
-  ┌─────▼──────┐
-  │  Response  │  Gemini sintetiza análise → resposta final em PT-BR
-  └─────┬──────┘
-        ▼
-   API Response (JSON: text + plot_base64)
+Pergunta
+   │
+   ▼
+[Planner]   ── Gemini: JSON lista de ferramentas [{tool, params}, ...]
+   │
+   ▼
+[Action]    ── Executa ferramenta → acumula DataFrames (retry + cache)
+   │  ↑
+   │  └── [Next-Tool] ── loop se pending_tools não vazia
+   │
+   ▼
+[Stats]     ── Python puro: média 1/3/5y, z-score, percentil, trend OLS,
+   │             indicadores derivados (Fisher, câmbio real)
+   │
+   ▼
+[Analysis]  ── Gemini: análise técnica + contexto histórico injetado
+   │
+   ▼
+[Auditor]   ── Python puro: 4 checks de consistência macro (sem LLM)
+   │
+   ▼
+[Plot]      ── Matplotlib: série única ou subplots multi-indicador
+   │
+   ▼
+[Response]  ── Gemini: síntese final PT-BR + alertas de auditoria
+   │
+   ▼
+JSON { text, plot_base64, cost_estimate_usd }
 ```
 
-**Camadas de suporte:**
-- `src/tools/cache.py` — Cache SQLite de séries temporais (TTL por frequência)
-- `src/utils/http.py` — Retry com backoff exponencial (3 tentativas)
-- `src/knowledge/` — Base teórica em Markdown (injetada no prompt de análise)
-- `src/storage/` — SQLite (dev) ou DynamoDB (prod) para histórico de conversas
+> Documentação completa em [docs/ARQUITETURA.md](docs/ARQUITETURA.md)
 
 ---
 
-## Como Executar
+## Quickstart
 
 ### Pré-requisitos
 
@@ -74,169 +125,132 @@ Pergunta do Usuário
 
 ### 1. Clonar e instalar
 
-```bash
+```powershell
 git clone https://github.com/o-allanribeiro/Multi-Agent-AI_Agente-de-Dados-Macroeconomicos-Brasileiro.git
-cd Multi-Agent-AI_Agente-de-Dados-Macroeconomicos-Brasileiro
-
-python -m venv .venv
-
-# Windows (PowerShell)
-.\.venv\Scripts\Activate.ps1
-
-# macOS/Linux
-source .venv/bin/activate
-
+cd "PROJETO MULTI AGENTE-  Agente de Dados Macroeconômicos Brasileiros"
+python -m venv venv
+.\venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 ```
 
-### 2. Configurar variáveis de ambiente
+### 2. Configurar
 
-```bash
-copy .env.example .env   # Windows
-# cp .env.example .env   # macOS/Linux
+```powershell
+Copy-Item .env.example .env
+# Edite .env: adicione GOOGLE_API_KEY=sua_chave
 ```
 
-Edite `.env` e preencha ao menos:
-```
-GOOGLE_API_KEY="sua_chave_aqui"
-```
+### 3. Executar
 
-### 3. Iniciar o servidor
-
-```bash
-# Na raiz do projeto (não dentro de src/)
-$env:PYTHONPATH = "src"   # PowerShell
-# export PYTHONPATH=src   # bash
-
-uvicorn src.asgi:app --reload --port 8000
+```powershell
+$env:PYTHONPATH = "src"
+$env:STORAGE_BACKEND = "sqlite"
+.\venv\Scripts\python.exe -m uvicorn src.asgi:app --host 127.0.0.1 --port 8002 --reload
 ```
 
-### 4. Abrir a interface
+Acesse `http://127.0.0.1:8002` no navegador.
 
-Abra `index.html` diretamente no navegador. A interface se conecta ao servidor na porta 8000.
+> Guia completo (Docker, DynamoDB, AWS): [docs/GUIA_INSTALACAO.md](docs/GUIA_INSTALACAO.md)  
+> Workflow de desenvolvimento e testes: [docs/GUIA_DESENVOLVIMENTO.md](docs/GUIA_DESENVOLVIMENTO.md)
 
 ---
 
-## Perguntas de Exemplo
+## Exemplos de Perguntas
 
+### Indicadores simples
 ```
 "Qual a evolução do IPCA nos últimos 2 anos?"
 "Me mostre a trajetória da Selic desde 2022."
 "Como está o Coeficiente de Gini no Brasil?"
+```
+
+### Indicadores derivados (computados via Python)
+```
+"Qual o juro real no Brasil hoje?"
+"Como está a taxa de câmbio real?"
+"Me explique a Selic em termos reais descontando a inflação."
+```
+
+### Multi-indicador e contexto histórico
+```
 "Compare a Selic com o IPCA dos últimos 12 meses."
-"Qual o rendimento médio dos trabalhadores brasileiros?"
-"Me mostre o PIB trimestral dos últimos 3 anos."
+"O juro real de hoje está acima ou abaixo da média dos últimos 5 anos?"
+"A desocupação em 2024 está num nível historicamente alto ou baixo?"
 ```
 
-Para mais exemplos, consulte [docs/PERGUNTAS_DEMO.md](docs/PERGUNTAS_DEMO.md).
-
----
-
-## DynamoDB Local (opcional — para teste de persistência)
-
-Por padrão o agente usa SQLite. Para testar com DynamoDB Local:
-
-**Pré-requisito:** Java 11+ instalado. Se não tiver:
-
-```powershell
-winget install Microsoft.OpenJDK.21
-```
-
-**Iniciar DynamoDB Local:**
-
-```powershell
-.\scripts\start_dynamodb_local.ps1
-```
-
-**Criar tabela e índice:**
-
-```bash
-python scripts/setup_dynamodb_local.py
-```
-
-**Ativar no `.env`:**
-
-```
-STORAGE_BACKEND="dynamodb"
-DYNAMODB_ENDPOINT_URL="http://localhost:8001"
-AWS_REGION="us-east-1"
-DYNAMODB_TABLE_NAME="agente-macro-conversations"
-```
-
-> **Nota:** O DynamoDB Local roda em memória (`-inMemory`). Dados são perdidos ao reiniciar o processo. Para persistência local, edite `start_dynamodb_local.ps1` e remova `-inMemory`.
-
----
-
-## Via Docker
-
-```bash
-cd deployment
-docker compose up --build
-```
-
-Para incluir DynamoDB Local no Docker:
-
-```bash
-docker compose --profile dynamodb up --build
-```
+> Lista completa (30+ exemplos): [docs/PERGUNTAS_DEMO.md](docs/PERGUNTAS_DEMO.md)
 
 ---
 
 ## Estrutura do Projeto
 
 ```
+.
+├── index.html                     # Interface web (HTML + Tailwind + JS)
+├── .env.example                   # Template de variáveis de ambiente
+├── requirements.txt
+├── docs/
+│   ├── FUNDAMENTO_CIENTIFICO.md  ← modelos econométricos e referências
+│   ├── ARQUITETURA.md            ← pipeline Onda 3 (8 nós)
+│   ├── GUIA_DESENVOLVIMENTO.md   ← setup, testes, como contribuir
+│   ├── GUIA_INSTALACAO.md
+│   ├── MOTIVACAO.md
+│   ├── PERGUNTAS_DEMO.md
+│   └── CHANGELOG.md
 ├── src/
 │   ├── agente/
-│   │   ├── agent.py          # Grafo LangGraph (pipeline com multi-tool loop)
-│   │   ├── state.py          # AgentState (TypedDict com pending_tools + datasets)
-│   │   ├── config.py         # Settings via Pydantic
+│   │   ├── agent.py              # LangGraph graph factory (8 nós)
+│   │   ├── state.py              # AgentState TypedDict (18 campos)
 │   │   └── nodes/
-│   │       ├── planner.py    # Planner → lista de ferramentas
-│   │       ├── action.py     # Executor + next_tool_node (loop multi-ferramenta)
-│   │       ├── analysis.py   # Análise comparativa + aviso de defasagem
-│   │       ├── plot.py       # Matplotlib: single / subplots multi-série
-│   │       └── response.py   # Síntese final
+│   │       ├── planner.py        # Planner: lista ferramentas + derivados
+│   │       ├── action.py         # Executor + loop multi-ferramenta
+│   │       ├── stats.py          # Contexto histórico (Python puro)
+│   │       ├── analysis.py       # Análise LLM + contexto histórico
+│   │       ├── auditor.py        # 4 checks de consistência macro
+│   │       ├── plot.py           # Matplotlib single/subplots
+│   │       └── response.py       # Síntese final + alertas auditoria
 │   ├── tools/
-│   │   ├── bcb.py            # BCB/SGS (IPCA, Selic, Câmbio, Desocupação)
-│   │   ├── ibge.py           # IBGE/SIDRA (PIB, IPCA-15, Rendimento PNAD)
-│   │   ├── ipea.py           # IPEADATA (FBCF)
-│   │   ├── world_bank.py     # Banco Mundial (Gini)
-│   │   ├── registry.py       # ToolRegistry imutável
-│   │   └── cache.py          # Cache SQLite de séries (TTL por frequência)
-│   ├── knowledge/            # Teoria econômica em Markdown (injetada no LLM)
-│   ├── storage/
-│   │   ├── sqlite.py         # Backend SQLite (desenvolvimento)
-│   │   └── dynamodb.py       # Backend DynamoDB (produção / GSI query)
-│   ├── api/
-│   │   ├── server.py         # FastAPI factory + rate limiting (slowapi)
-│   │   ├── routes.py         # POST /ask (10 req/min) + custo estimado por req
-│   │   └── limiter.py        # Singleton do rate limiter
-│   └── utils/
-│       ├── http.py           # Retry com backoff exponencial
-│       └── cost_tracker.py   # Estimativa de custo Gemini por requisição
-├── scripts/
-│   ├── setup_dynamodb_local.py   # Cria tabela + GSI RecentConversationsIndex
-│   └── start_dynamodb_local.ps1  # Inicia DynamoDB Local
-├── deployment/
-│   └── docker-compose.yml
-├── docs/
-│   ├── PERGUNTAS_DEMO.md
-│   └── MOTIVACAO.md
-├── .env.example              # Template de variáveis (documentado por ambiente)
-├── requirements.txt
-└── index.html                # Frontend (HTML + Tailwind + JS)
+│   │   ├── bcb.py / ibge.py / ipea.py / world_bank.py
+│   │   ├── derived.py            # Fisher identity, câmbio real
+│   │   ├── registry.py           # ToolRegistry imutável
+│   │   └── cache.py              # Cache SQLite de séries (TTL)
+│   ├── knowledge/
+│   │   ├── ipca.md / selic.md / juros_reais.md / dolar.md
+│   │   ├── desocupacao.md / fbcf_pib.md / gini.md
+│   │   └── bibliografia.md
+│   ├── api/                      # FastAPI (routes, schemas, rate limiter)
+│   ├── storage/                  # SQLite + DynamoDB backends
+│   └── utils/                    # http retry, cost_tracker, date_utils
+└── tests/
+    ├── unit/                     # test_api, test_nodes, test_tools
+    └── integration/              # test_agent_flow, test_e2e
 ```
 
 ---
 
 ## Limitações Conhecidas
 
-- **Dados do Banco Mundial (Gini):** lag de 2-3 anos. O agente sinaliza automaticamente a defasagem na análise.
-- **Análise multi-indicador:** máximo de eficiência com 2-3 séries simultâneas. Perguntas muito amplas podem gerar respostas longas.
-- **Cache de séries:** dados são armazenados localmente em `output/series_cache.db`. Em ambientes com múltiplos workers, o cache SQLite não é compartilhado entre processos.
+| Limitação | Contorno |
+|---|---|
+| Gini (Banco Mundial): lag de 2-3 anos | Auditor sinaliza defasagem automaticamente |
+| Cache SQLite não compartilhado entre workers | 1 worker local; Redis em produção multi-worker |
+| Gemini sem garantia de disponibilidade 100% | Retry configurado (3 tentativas com backoff) |
 
 ---
 
-### [➡️ Exemplos de Perguntas para Demonstração][def]
+## Referências Principais
 
-[def]: docs/PERGUNTAS_DEMO.md
+- **Wooldridge, J. M.** — *Introdução à Econometria* — OLS, séries temporais
+- **Fisher, I.** (1930) — *The Theory of Interest* — Identidade de Fisher
+- **Taylor, J. B.** (1993) — *Discretion vs. Policy Rules* — Regra de Taylor
+- **Simonsen, M. H.** (1970) — *Inflação: Gradualismo x Tratamento de Choque*
+- **Furtado, C.** (1959) — *Formação Econômica do Brasil*
+- **Solow, R.** (1956) — Modelo de crescimento neoclássico
+
+> Referências completas em [docs/FUNDAMENTO_CIENTIFICO.md](docs/FUNDAMENTO_CIENTIFICO.md)
+
+---
+
+## Licença
+
+MIT
