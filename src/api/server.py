@@ -13,8 +13,10 @@ Uso:
 """
 import logging
 import time
+from pathlib import Path
 
 from fastapi import FastAPI, Request
+from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
@@ -110,5 +112,14 @@ def create_app() -> FastAPI:
     # Endpoint legado para compatibilidade com o frontend existente
     from api.legacy import legacy_router
     app.include_router(legacy_router)
+
+    # -------------------------------------------------------------------------
+    # Frontend — serve index.html na raiz para evitar CORS com file://
+    # -------------------------------------------------------------------------
+    _FRONTEND_HTML = Path(__file__).resolve().parent.parent.parent / "index.html"
+
+    @app.get("/", include_in_schema=False)
+    async def serve_frontend():
+        return FileResponse(str(_FRONTEND_HTML), media_type="text/html")
 
     return app

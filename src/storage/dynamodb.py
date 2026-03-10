@@ -50,6 +50,7 @@ class DynamoDBBackend(StorageBackend):
     ) -> None:
         try:
             import boto3
+            from botocore.config import Config
 
             self._table_name = table_name
             self._ttl_days = ttl_days
@@ -60,6 +61,12 @@ class DynamoDBBackend(StorageBackend):
             kwargs = dict(
                 region_name=region,
                 endpoint_url=endpoint_url,
+                # Timeout curto + 1 retry: falha rápido se DynamoDB não estiver disponível
+                config=Config(
+                    connect_timeout=3,
+                    read_timeout=5,
+                    retries={"max_attempts": 1},
+                ),
             )
             if is_local:
                 kwargs["aws_access_key_id"] = "fakeKeyId"
