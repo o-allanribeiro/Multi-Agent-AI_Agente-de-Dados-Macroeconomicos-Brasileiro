@@ -18,9 +18,9 @@ from fastapi import APIRouter, HTTPException, Request
 from agente.agent import run_agent
 from agente.config import get_settings
 from api.limiter import limiter
-from api.schemas import HealthResponse, QueryRequest, QueryResponse
+from api.schemas import ConversationItem, HealthResponse, HistoryResponse, QueryRequest, QueryResponse
 from storage import ConversationRecord, get_storage
-from utils.cost_tracker import log_request_cost
+from utils.cost_tracker import estimate_cost, log_request_cost
 
 logger = logging.getLogger(__name__)
 
@@ -93,6 +93,7 @@ async def ask_agent(request: Request, query: QueryRequest) -> QueryResponse:
         data_df = final_state.get("data")
         n_tools = len(data_df.columns) if data_df is not None and not data_df.empty else 1
         tools_used = [str(c) for c in data_df.columns] if data_df is not None and not data_df.empty else [final_state.get("tool_to_use", "unknown")]
+        cost_info = estimate_cost(n_tools)
         log_request_cost(
             session_id=session_id,
             tools_used=tools_used,
@@ -127,6 +128,7 @@ async def ask_agent(request: Request, query: QueryRequest) -> QueryResponse:
             text=response_text,
             plot_base64=plot_base64,
             has_data=has_data,
+            cost_estimate_usd=cost_info["cost_usd"],
             error=final_state.get("error"),
         )
 
@@ -141,3 +143,35 @@ async def ask_agent(request: Request, query: QueryRequest) -> QueryResponse:
             status_code=500,
             detail=f"Erro interno do servidor: {exc}",
         )
+
+
+@router.get("/history", response_model=HistoryResponse, tags=["Histórico"])
+async def list_history(limit: int = 20) -> HistoryResponse:
+    """
+    Retorna as N conversões mais recentes persistidas no storage.
+
+    Usa o GSI RecentConversationsIndex quando o backend for DynamoDB,
+    ou consulta SQLite ordenado por timestamp DESC.
+    """
+    if limit < 1 or limit > 100:
+        limit = 20
+
+    try:
+        records = get_storage().list_recent(limit=limit)
+    except Exception as exc:
+        logger.warning("Falha ao listar histórico | error=%s", exc)
+        records = []
+
+    items = [
+        ConversationItem(
+            session_id=r.session_id,
+            question=r.question,
+            response=r.response,
+            has_data=r.has_data,
+            has_plot=r.has_plot,
+            timestamp=r.timestamp.isoformat(),
+            error=r.error,
+        )
+        for r in records
+    ]
+    return HistoryResponse(conversations=items, total=len(items))

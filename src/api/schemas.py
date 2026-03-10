@@ -31,10 +31,33 @@ class QueryResponse(BaseModel):
         description="Gráfico em Base64 URI (data:image/png;base64,...) ou null.",
     )
     has_data: bool = Field(description="True se o agente encontrou dados para a pergunta.")
+    cost_estimate_usd: float = Field(
+        default=0.0,
+        description="Estimativa de custo em USD para esta requisição (Gemini tokens).",
+    )
     error: Optional[str] = Field(
         default=None,
         description="Mensagem de erro, se houver.",
     )
+
+
+class ConversationItem(BaseModel):
+    """Item de histórico retornado pelo endpoint /history."""
+
+    session_id: str
+    question: str
+    response: str
+    has_data: bool
+    has_plot: bool
+    timestamp: str
+    error: Optional[str] = None
+
+
+class HistoryResponse(BaseModel):
+    """Corpo da resposta do endpoint /history."""
+
+    conversations: list[ConversationItem]
+    total: int
 
 
 class HealthResponse(BaseModel):

@@ -3,175 +3,450 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Demonstração do Agente de IA para Análise Econômica</title>
+    <title>Agente de Dados Macroeconômicos Brasileiros</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
-        body {
-            font-family: 'Inter', sans-serif;
-        }
-        #chat-window::-webkit-scrollbar {
-            width: 8px;
-        }
-        #chat-window::-webkit-scrollbar-track {
-            background: #f1f5f9;
-        }
-        #chat-window::-webkit-scrollbar-thumb {
+        body { font-family: 'Inter', sans-serif; }
+
+        .scrollable::-webkit-scrollbar { width: 6px; }
+        .scrollable::-webkit-scrollbar-track { background: #f1f5f9; }
+        .scrollable::-webkit-scrollbar-thumb {
             background-color: #94a3b8;
             border-radius: 10px;
-            border: 3px solid #f1f5f9;
         }
-        .typing-indicator span {
-            animation: blink 1.4s infinite both;
-        }
-        .typing-indicator span:nth-child(2) {
-            animation-delay: .2s;
-        }
-        .typing-indicator span:nth-child(3) {
-            animation-delay: .4s;
-        }
+
+        .typing-indicator span { animation: blink 1.4s infinite both; }
+        .typing-indicator span:nth-child(2) { animation-delay: .2s; }
+        .typing-indicator span:nth-child(3) { animation-delay: .4s; }
         @keyframes blink {
-            0% { opacity: .2; }
-            20% { opacity: 1; }
+            0%   { opacity: .2; }
+            20%  { opacity: 1;  }
             100% { opacity: .2; }
+        }
+
+        /* Custo badge */
+        .cost-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            font-size: 0.7rem;
+            padding: 2px 7px;
+            border-radius: 9999px;
+            background: #f0fdf4;
+            color: #166534;
+            border: 1px solid #bbf7d0;
+            margin-top: 6px;
+            font-weight: 500;
+        }
+
+        /* Histórico item hover */
+        .history-item { cursor: pointer; transition: background 0.15s; }
+        .history-item:hover { background: #f1f5f9; }
+
+        /* Painel histórico mobile: oculto por padrão */
+        #history-panel { display: none; }
+        #history-panel.open { display: flex; }
+
+        @media (min-width: 1024px) {
+            #history-panel { display: flex !important; }
+            #history-toggle { display: none !important; }
         }
     </style>
 </head>
-<body class="bg-slate-100 flex items-center justify-center h-screen">
+<body class="bg-slate-100 min-h-screen flex items-center justify-center p-2 lg:p-4">
 
-    <div class="w-full max-w-2xl h-full sm:h-[90vh] flex flex-col bg-white rounded-2xl shadow-2xl">
-        <!-- Cabeçalho -->
-        <header class="p-4 border-b border-slate-200">
-            <h1 class="text-xl font-bold text-slate-800">Agente de Pesquisa Econômica</h1>
-            <p class="text-sm text-slate-500">Faça uma pergunta sobre IPCA, Desocupação, Gini, ou FBCF.</p>
-        </header>
+    <div class="w-full max-w-6xl h-[96vh] flex gap-4">
 
-        <!-- Janela do Chat -->
-        <main id="chat-window" class="flex-1 p-6 overflow-y-auto space-y-6">
-            <!-- Mensagem inicial do Agente -->
-            <div class="flex items-start gap-3">
-                <div class="w-10 h-10 rounded-full bg-slate-700 flex items-center justify-center text-white font-bold text-sm shrink-0">IA</div>
-                <div class="bg-slate-200 text-slate-800 p-3 rounded-lg rounded-tl-none">
-                    <p class="text-sm">Olá! Sou seu assistente para análise de dados macroeconômicos. Como posso ajudar?</p>
+        <!-- ═══════════════════════════════════════════════
+             PAINEL ESQUERDO — HISTÓRICO DE CONVERSAS
+        ═══════════════════════════════════════════════ -->
+        <aside id="history-panel"
+               class="w-72 shrink-0 flex-col bg-white rounded-2xl shadow-lg overflow-hidden open lg:flex">
+            <!-- Cabeçalho do painel -->
+            <div class="p-4 border-b border-slate-200 flex items-center justify-between">
+                <div>
+                    <h2 class="font-semibold text-slate-800 text-sm">Histórico</h2>
+                    <p class="text-xs text-slate-400 mt-0.5">Conversas recentes</p>
+                </div>
+                <button id="refresh-history"
+                        class="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500 hover:text-slate-700 transition"
+                        title="Atualizar histórico">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24"
+                         fill="none" stroke="currentColor" stroke-width="2"
+                         stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/>
+                        <path d="M21 3v5h-5"/>
+                        <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/>
+                        <path d="M8 16H3v5"/>
+                    </svg>
+                </button>
+            </div>
+
+            <!-- Lista de conversas -->
+            <div id="history-list" class="flex-1 overflow-y-auto scrollable divide-y divide-slate-100">
+                <div class="p-4 text-center text-xs text-slate-400" id="history-empty">
+                    Carregando histórico...
                 </div>
             </div>
-        </main>
 
-        <!-- Formulário de Entrada -->
-        <footer class="p-4 border-t border-slate-200">
-            <form id="chat-form" class="flex items-center gap-3">
-                <input type="text" id="message-input" placeholder="Digite sua pergunta aqui..." class="flex-1 w-full px-4 py-2 bg-slate-100 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition duration-200" autocomplete="off">
-                <button type="submit" id="submit-button" class="px-5 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition duration-200 flex items-center gap-2">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-send"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>
-                    <span>Enviar</span>
+            <!-- Rodapé: custo acumulado da sessão -->
+            <div class="p-3 border-t border-slate-100 bg-slate-50">
+                <p class="text-xs text-slate-500">
+                    Custo estimado da sessão:
+                    <span id="session-cost" class="font-semibold text-slate-700">$0.000000</span>
+                </p>
+            </div>
+        </aside>
+
+        <!-- ═══════════════════════════════════════════════
+             PAINEL DIREITO — CHAT PRINCIPAL
+        ═══════════════════════════════════════════════ -->
+        <div class="flex-1 flex flex-col bg-white rounded-2xl shadow-2xl overflow-hidden min-w-0">
+
+            <!-- Cabeçalho -->
+            <header class="p-4 border-b border-slate-200 flex items-center justify-between">
+                <div>
+                    <h1 class="text-lg font-bold text-slate-800">Agente de Pesquisa Econômica</h1>
+                    <p class="text-xs text-slate-500 mt-0.5">
+                        IPCA · Selic · Gini · Desemprego · PIB · Câmbio · e mais
+                    </p>
+                </div>
+                <!-- Botão histórico (mobile) -->
+                <button id="history-toggle"
+                        class="lg:hidden p-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 transition text-xs font-medium flex items-center gap-1">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24"
+                         fill="none" stroke="currentColor" stroke-width="2"
+                         stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M3 3h18M3 12h18M3 21h18"/>
+                    </svg>
+                    Histórico
                 </button>
-            </form>
-        </footer>
+            </header>
+
+            <!-- Janela do chat -->
+            <main id="chat-window" class="flex-1 p-5 overflow-y-auto scrollable space-y-5">
+                <div class="flex items-start gap-3">
+                    <div class="w-9 h-9 rounded-full bg-slate-700 flex items-center justify-center
+                                text-white font-bold text-xs shrink-0">IA</div>
+                    <div class="bg-slate-100 text-slate-800 p-3 rounded-xl rounded-tl-none max-w-xl">
+                        <p class="text-sm">Olá! Sou seu assistente para análise de dados macroeconômicos brasileiros.</p>
+                        <p class="text-sm mt-1">Posso trazer dados do <strong>Banco Central</strong>, <strong>IBGE</strong>, <strong>IPEA</strong> e <strong>Banco Mundial</strong>. Experimente perguntar sobre dois indicadores ao mesmo tempo!</p>
+                    </div>
+                </div>
+            </main>
+
+            <!-- Barra de entrada -->
+            <footer class="p-4 border-t border-slate-200">
+                <form id="chat-form" class="flex items-center gap-2">
+                    <input type="text" id="message-input"
+                           placeholder="Ex: Compare a Selic e o IPCA desde 2022..."
+                           class="flex-1 px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl
+                                  focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm transition"
+                           autocomplete="off">
+                    <button type="submit" id="submit-button"
+                            class="px-5 py-2.5 bg-blue-600 text-white font-semibold rounded-xl
+                                   hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500
+                                   focus:ring-offset-2 transition flex items-center gap-2 shrink-0 text-sm">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24"
+                             fill="none" stroke="currentColor" stroke-width="2"
+                             stroke-linecap="round" stroke-linejoin="round">
+                            <path d="m22 2-7 20-4-9-9-4Z"/>
+                            <path d="M22 2 11 13"/>
+                        </svg>
+                        Enviar
+                    </button>
+                </form>
+            </footer>
+        </div>
     </div>
 
     <script>
-        const chatWindow = document.getElementById('chat-window');
-        const chatForm = document.getElementById('chat-form');
-        const messageInput = document.getElementById('message-input');
-        const submitButton = document.getElementById('submit-button');
+        // ──────────────────────────────────────────────
+        // Config
+        // ──────────────────────────────────────────────
+        const API_BASE = 'http://127.0.0.1:8002';
 
+        // ──────────────────────────────────────────────
+        // State
+        // ──────────────────────────────────────────────
+        let sessionCostTotal = 0;
+
+        // ──────────────────────────────────────────────
+        // DOM refs
+        // ──────────────────────────────────────────────
+        const chatWindow     = document.getElementById('chat-window');
+        const chatForm       = document.getElementById('chat-form');
+        const messageInput   = document.getElementById('message-input');
+        const submitButton   = document.getElementById('submit-button');
+        const historyList    = document.getElementById('history-list');
+        const historyEmpty   = document.getElementById('history-empty');
+        const sessionCostEl  = document.getElementById('session-cost');
+        const refreshBtn     = document.getElementById('refresh-history');
+        const historyToggle  = document.getElementById('history-toggle');
+        const historyPanel   = document.getElementById('history-panel');
+
+        // ──────────────────────────────────────────────
+        // Mobile: toggle painel histórico
+        // ──────────────────────────────────────────────
+        historyToggle.addEventListener('click', () => {
+            historyPanel.classList.toggle('open');
+        });
+
+        // ──────────────────────────────────────────────
+        // Chat: envio de mensagem
+        // ──────────────────────────────────────────────
         chatForm.addEventListener('submit', (e) => {
             e.preventDefault();
             const userMessage = messageInput.value.trim();
-            if (userMessage) {
-                addMessage(userMessage, 'user');
-                messageInput.value = '';
-                getAgentResponse(userMessage);
-            }
+            if (!userMessage) return;
+            addUserMessage(userMessage);
+            messageInput.value = '';
+            getAgentResponse(userMessage);
         });
 
-        function addMessage(text, sender, imageUrl = null) {
-            const messageContainer = document.createElement('div');
-            if (sender === 'user') {
-                messageContainer.className = 'flex items-start gap-3 justify-end';
-                messageContainer.innerHTML = `
-                    <div class="bg-blue-600 text-white p-3 rounded-lg rounded-br-none">
-                        <p class="text-sm">${text}</p>
-                    </div>
-                    <div class="w-10 h-10 rounded-full bg-blue-200 flex items-center justify-center text-blue-800 font-bold text-sm shrink-0">Você</div>
-                `;
-            } else {
-                messageContainer.className = 'flex items-start gap-3';
-                let content = `<p class="text-sm">${text.replace(/\n/g, '<br>')}</p>`; // Converte quebras de linha
-                if (imageUrl) {
-                    content += `<img src="${imageUrl}" alt="Gráfico de Análise" class="mt-3 rounded-lg shadow-md max-w-sm w-full">`;
-                }
-                 messageContainer.innerHTML = `
-                    <div class="w-10 h-10 rounded-full bg-slate-700 flex items-center justify-center text-white font-bold text-sm shrink-0">IA</div>
-                    <div class="bg-slate-200 text-slate-800 p-3 rounded-lg rounded-tl-none">
-                        ${content}
-                    </div>
-                `;
-            }
-            chatWindow.appendChild(messageContainer);
+        // ──────────────────────────────────────────────
+        // Adiciona mensagem do usuário
+        // ──────────────────────────────────────────────
+        function addUserMessage(text) {
+            const el = document.createElement('div');
+            el.className = 'flex items-start gap-3 justify-end';
+            el.innerHTML = `
+                <div class="bg-blue-600 text-white p-3 rounded-xl rounded-br-none max-w-xl">
+                    <p class="text-sm">${escapeHtml(text)}</p>
+                </div>
+                <div class="w-9 h-9 rounded-full bg-blue-100 flex items-center justify-center
+                            text-blue-700 font-bold text-xs shrink-0">Você</div>
+            `;
+            chatWindow.appendChild(el);
             scrollToBottom();
         }
 
-        function showTypingIndicator() {
-            const typingIndicator = document.createElement('div');
-            typingIndicator.id = 'typing-indicator';
-            typingIndicator.className = 'flex items-start gap-3';
-            typingIndicator.innerHTML = `
-                <div class="w-10 h-10 rounded-full bg-slate-700 flex items-center justify-center text-white font-bold text-sm shrink-0">IA</div>
-                <div class="bg-slate-200 text-slate-800 p-3 rounded-lg rounded-tl-none typing-indicator">
-                    <span class="w-2 h-2 bg-slate-500 rounded-full inline-block"></span>
-                    <span class="w-2 h-2 bg-slate-500 rounded-full inline-block"></span>
-                    <span class="w-2 h-2 bg-slate-500 rounded-full inline-block"></span>
+        // ──────────────────────────────────────────────
+        // Adiciona resposta do agente
+        // ──────────────────────────────────────────────
+        function addAgentMessage(text, plotBase64, costUsd) {
+            const el = document.createElement('div');
+            el.className = 'flex items-start gap-3';
+
+            // Texto da resposta
+            let content = `<p class="text-sm leading-relaxed">${text.replace(/\n/g, '<br>')}</p>`;
+
+            // Gráfico (pode ser subplot empilhado — usa largura total)
+            if (plotBase64) {
+                content += `
+                    <div class="mt-3">
+                        <img src="${plotBase64}"
+                             alt="Gráfico de Análise"
+                             class="rounded-xl shadow-md w-full cursor-pointer"
+                             title="Clique para expandir"
+                             onclick="openLightbox(this.src)">
+                    </div>`;
+            }
+
+            // Badge de custo estimado
+            if (costUsd !== undefined && costUsd !== null) {
+                const costStr = `$${costUsd.toFixed(6)}`;
+                content += `
+                    <div>
+                        <span class="cost-badge">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"
+                                 viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                 stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <circle cx="12" cy="12" r="10"/>
+                                <path d="M12 6v6l4 2"/>
+                            </svg>
+                            Custo estimado: ${costStr}
+                        </span>
+                    </div>`;
+            }
+
+            el.innerHTML = `
+                <div class="w-9 h-9 rounded-full bg-slate-700 flex items-center justify-center
+                            text-white font-bold text-xs shrink-0">IA</div>
+                <div class="bg-slate-100 text-slate-800 p-3 rounded-xl rounded-tl-none max-w-xl w-full">
+                    ${content}
                 </div>
             `;
-            chatWindow.appendChild(typingIndicator);
+            chatWindow.appendChild(el);
+            scrollToBottom();
+        }
+
+        // ──────────────────────────────────────────────
+        // Lightbox para imagem expandida
+        // ──────────────────────────────────────────────
+        function openLightbox(src) {
+            const overlay = document.createElement('div');
+            overlay.className = 'fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4';
+            overlay.innerHTML = `
+                <img src="${src}" class="max-h-[90vh] max-w-full rounded-xl shadow-2xl">
+            `;
+            overlay.addEventListener('click', () => overlay.remove());
+            document.body.appendChild(overlay);
+        }
+
+        // ──────────────────────────────────────────────
+        // Typing indicator
+        // ──────────────────────────────────────────────
+        function showTypingIndicator() {
+            const el = document.createElement('div');
+            el.id = 'typing-indicator';
+            el.className = 'flex items-start gap-3';
+            el.innerHTML = `
+                <div class="w-9 h-9 rounded-full bg-slate-700 flex items-center justify-center
+                            text-white font-bold text-xs shrink-0">IA</div>
+                <div class="bg-slate-100 text-slate-800 p-3 rounded-xl rounded-tl-none typing-indicator">
+                    <span class="w-2 h-2 bg-slate-400 rounded-full inline-block"></span>
+                    <span class="w-2 h-2 bg-slate-400 rounded-full inline-block"></span>
+                    <span class="w-2 h-2 bg-slate-400 rounded-full inline-block"></span>
+                </div>
+            `;
+            chatWindow.appendChild(el);
             scrollToBottom();
         }
 
         function removeTypingIndicator() {
-            const indicator = document.getElementById('typing-indicator');
-            if (indicator) {
-                indicator.remove();
-            }
+            document.getElementById('typing-indicator')?.remove();
         }
 
         function scrollToBottom() {
             chatWindow.scrollTop = chatWindow.scrollHeight;
         }
 
+        // ──────────────────────────────────────────────
+        // Chama o agente
+        // ──────────────────────────────────────────────
         async function getAgentResponse(question) {
             submitButton.disabled = true;
             showTypingIndicator();
 
             try {
-                const response = await fetch('http://127.0.0.1:8000/ask-agent', {
+                const res = await fetch(`${API_BASE}/ask`, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ question: question }),
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ question }),
                 });
 
                 removeTypingIndicator();
 
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
+                if (!res.ok) {
+                    const err = await res.json().catch(() => ({}));
+                    throw new Error(err.detail || `HTTP ${res.status}`);
                 }
 
-                const data = await response.json();
-                addMessage(data.text, 'agent', data.plot_base64);
+                const data = await res.json();
+
+                // Atualiza custo acumulado
+                if (data.cost_estimate_usd) {
+                    sessionCostTotal += data.cost_estimate_usd;
+                    sessionCostEl.textContent = `$${sessionCostTotal.toFixed(6)}`;
+                }
+
+                addAgentMessage(data.text, data.plot_base64, data.cost_estimate_usd);
+
+                // Atualiza histórico após nova resposta
+                loadHistory();
 
             } catch (error) {
-                console.error('Erro ao conectar com o agente:', error);
+                console.error('Erro:', error);
                 removeTypingIndicator();
-                addMessage('Desculpe, não consegui me conectar ao meu cérebro. Verifique se o servidor Python está rodando e tente novamente.', 'agent');
+                addAgentMessage(`Não consegui conectar ao servidor. Verifique se ele está rodando em ${API_BASE}.\n\nDetalhe: ${error.message}`);
             } finally {
                 submitButton.disabled = false;
                 messageInput.focus();
             }
         }
+
+        // ──────────────────────────────────────────────
+        // Histórico de conversas
+        // ──────────────────────────────────────────────
+        async function loadHistory() {
+            try {
+                const res = await fetch(`${API_BASE}/history?limit=20`);
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const data = await res.json();
+                renderHistory(data.conversations);
+            } catch (e) {
+                historyEmpty.textContent = 'Erro ao carregar histórico.';
+                historyEmpty.style.display = 'block';
+            }
+        }
+
+        function renderHistory(conversations) {
+            historyList.innerHTML = '';
+
+            if (!conversations || conversations.length === 0) {
+                historyList.innerHTML = `
+                    <div class="p-4 text-center text-xs text-slate-400">
+                        Nenhuma conversa salva ainda.
+                    </div>`;
+                return;
+            }
+
+            conversations.forEach(conv => {
+                const item = document.createElement('div');
+                item.className = 'history-item p-3';
+
+                // Formata timestamp
+                const ts = new Date(conv.timestamp);
+                const dateStr = ts.toLocaleString('pt-BR', {
+                    day: '2-digit', month: '2-digit',
+                    hour: '2-digit', minute: '2-digit'
+                });
+
+                // Badges: tem dados? tem gráfico?
+                const dataBadge = conv.has_data
+                    ? `<span class="text-xs px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 border border-blue-200">dados</span>`
+                    : '';
+                const plotBadge = conv.has_plot
+                    ? `<span class="text-xs px-1.5 py-0.5 rounded bg-purple-50 text-purple-600 border border-purple-200">gráfico</span>`
+                    : '';
+                const errBadge = conv.error
+                    ? `<span class="text-xs px-1.5 py-0.5 rounded bg-red-50 text-red-500 border border-red-200">erro</span>`
+                    : '';
+
+                item.innerHTML = `
+                    <p class="text-xs font-medium text-slate-700 truncate" title="${escapeHtml(conv.question)}">
+                        ${escapeHtml(conv.question)}
+                    </p>
+                    <div class="flex items-center gap-1 mt-1 flex-wrap">
+                        <span class="text-xs text-slate-400">${dateStr}</span>
+                        ${dataBadge}${plotBadge}${errBadge}
+                    </div>
+                `;
+
+                // Clique: repopula o input com a pergunta
+                item.addEventListener('click', () => {
+                    messageInput.value = conv.question;
+                    messageInput.focus();
+                    // Mobile: fecha painel
+                    historyPanel.classList.remove('open');
+                });
+
+                historyList.appendChild(item);
+            });
+        }
+
+        // Botão atualizar histórico
+        refreshBtn.addEventListener('click', loadHistory);
+
+        // ──────────────────────────────────────────────
+        // Utilitários
+        // ──────────────────────────────────────────────
+        function escapeHtml(str) {
+            return str
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;');
+        }
+
+        // ──────────────────────────────────────────────
+        // Init
+        // ──────────────────────────────────────────────
+        loadHistory();
     </script>
 </body>
 </html>
