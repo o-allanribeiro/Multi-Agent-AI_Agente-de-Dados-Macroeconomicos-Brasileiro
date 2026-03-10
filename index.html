@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Agente de Dados Macroeconômicos Brasileiros</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked@12/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1/dist/purify.min.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -54,6 +56,56 @@
             #history-panel { display: flex !important; }
             #history-toggle { display: none !important; }
         }
+
+        /* Markdown renderizado dentro das bolhas */
+        .md-body h1, .md-body h2, .md-body h3 {
+            font-weight: 700;
+            margin: 0.6em 0 0.3em;
+            color: #1e293b;
+        }
+        .md-body h1 { font-size: 1.1rem; }
+        .md-body h2 { font-size: 1rem; }
+        .md-body h3 { font-size: 0.95rem; }
+        .md-body p  { margin: 0.35em 0; }
+        .md-body ul, .md-body ol { padding-left: 1.4em; margin: 0.35em 0; }
+        .md-body li { margin: 0.2em 0; }
+        .md-body strong { font-weight: 700; color: #0f172a; }
+        .md-body em { font-style: italic; }
+        .md-body code {
+            background: #e2e8f0;
+            padding: 1px 5px;
+            border-radius: 4px;
+            font-size: 0.82em;
+            font-family: monospace;
+        }
+        .md-body pre {
+            background: #1e293b;
+            color: #e2e8f0;
+            padding: 0.75em 1em;
+            border-radius: 8px;
+            font-size: 0.8em;
+            overflow-x: auto;
+            margin: 0.5em 0;
+        }
+        .md-body pre code { background: none; color: inherit; padding: 0; }
+        .md-body table {
+            border-collapse: collapse;
+            font-size: 0.82em;
+            margin: 0.5em 0;
+            width: 100%;
+        }
+        .md-body th, .md-body td {
+            border: 1px solid #cbd5e1;
+            padding: 4px 8px;
+        }
+        .md-body th { background: #f1f5f9; font-weight: 600; }
+        .md-body blockquote {
+            border-left: 3px solid #94a3b8;
+            padding-left: 0.75em;
+            color: #475569;
+            margin: 0.4em 0;
+        }
+        .md-body hr { border: none; border-top: 1px solid #e2e8f0; margin: 0.5em 0; }
     </style>
 </head>
 <body class="bg-slate-100 min-h-screen flex items-center justify-center p-2 lg:p-4">
@@ -114,26 +166,61 @@
                         IPCA · Selic · Gini · Desemprego · PIB · Câmbio · e mais
                     </p>
                 </div>
-                <!-- Botão histórico (mobile) -->
-                <button id="history-toggle"
-                        class="lg:hidden p-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 transition text-xs font-medium flex items-center gap-1">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24"
-                         fill="none" stroke="currentColor" stroke-width="2"
-                         stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M3 3h18M3 12h18M3 21h18"/>
-                    </svg>
-                    Histórico
-                </button>
+                <div class="flex items-center gap-2">
+                    <!-- Botão Nova Conversa -->
+                    <button id="new-chat-btn"
+                            class="hidden lg:flex items-center gap-1.5 px-3 py-1.5 rounded-lg
+                                   bg-slate-100 hover:bg-slate-200 text-slate-600 transition text-xs font-medium"
+                            title="Limpar chat e iniciar nova conversa">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24"
+                             fill="none" stroke="currentColor" stroke-width="2"
+                             stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M12 5v14M5 12h14"/>
+                        </svg>
+                        Nova Conversa
+                    </button>
+                    <!-- Botão histórico (mobile) -->
+                    <button id="history-toggle"
+                            class="lg:hidden p-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 transition text-xs font-medium flex items-center gap-1">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24"
+                             fill="none" stroke="currentColor" stroke-width="2"
+                             stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M3 3h18M3 12h18M3 21h18"/>
+                        </svg>
+                        Histórico
+                    </button>
+                </div>
             </header>
 
             <!-- Janela do chat -->
             <main id="chat-window" class="flex-1 p-5 overflow-y-auto scrollable space-y-5">
-                <div class="flex items-start gap-3">
+                <div id="welcome-block" class="flex items-start gap-3">
                     <div class="w-9 h-9 rounded-full bg-slate-700 flex items-center justify-center
                                 text-white font-bold text-xs shrink-0">IA</div>
                     <div class="bg-slate-100 text-slate-800 p-3 rounded-xl rounded-tl-none max-w-xl">
                         <p class="text-sm">Olá! Sou seu assistente para análise de dados macroeconômicos brasileiros.</p>
-                        <p class="text-sm mt-1">Posso trazer dados do <strong>Banco Central</strong>, <strong>IBGE</strong>, <strong>IPEA</strong> e <strong>Banco Mundial</strong>. Experimente perguntar sobre dois indicadores ao mesmo tempo!</p>
+                        <p class="text-sm mt-1">Posso trazer dados do <strong>Banco Central</strong>, <strong>IBGE</strong>, <strong>IPEA</strong> e <strong>Banco Mundial</strong>. Experimente uma das sugestões:</p>
+                        <!-- Chips de sugestões -->
+                        <div class="mt-3 flex flex-wrap gap-2" id="suggestion-chips">
+                            <button class="suggestion text-xs px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-blue-50 hover:border-blue-400 text-slate-600 hover:text-blue-700 transition">
+                                Qual está o IPCA dos últimos 2 anos?
+                            </button>
+                            <button class="suggestion text-xs px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-blue-50 hover:border-blue-400 text-slate-600 hover:text-blue-700 transition">
+                                Compare a Selic e o IPCA desde 2022
+                            </button>
+                            <button class="suggestion text-xs px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-blue-50 hover:border-blue-400 text-slate-600 hover:text-blue-700 transition">
+                                Qual o juro real no Brasil hoje? (Fisher)
+                            </button>
+                            <button class="suggestion text-xs px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-blue-50 hover:border-blue-400 text-slate-600 hover:text-blue-700 transition">
+                                Como está a taxa de desemprego nos últimos 3 anos?
+                            </button>
+                            <button class="suggestion text-xs px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-blue-50 hover:border-blue-400 text-slate-600 hover:text-blue-700 transition">
+                                Câmbio real BRL/USD nos últimos 2 anos
+                            </button>
+                            <button class="suggestion text-xs px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-blue-50 hover:border-blue-400 text-slate-600 hover:text-blue-700 transition">
+                                Curva de Phillips: IPCA vs desemprego
+                            </button>
+                        </div>
                     </div>
                 </div>
             </main>
@@ -169,6 +256,9 @@
         // ──────────────────────────────────────────────
         const API_BASE = 'http://127.0.0.1:8002';
 
+        // Configura marked: sem GFM pedantry, permite HTML
+        marked.setOptions({ gfm: true, breaks: true });
+
         // ──────────────────────────────────────────────
         // State
         // ──────────────────────────────────────────────
@@ -187,6 +277,49 @@
         const refreshBtn     = document.getElementById('refresh-history');
         const historyToggle  = document.getElementById('history-toggle');
         const historyPanel   = document.getElementById('history-panel');
+        const newChatBtn     = document.getElementById('new-chat-btn');
+
+        // ──────────────────────────────────────────────
+        // Chips de sugestões
+        // ──────────────────────────────────────────────
+        document.querySelectorAll('.suggestion').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const q = btn.textContent.trim();
+                messageInput.value = q;
+                messageInput.focus();
+                chatForm.requestSubmit();
+            });
+        });
+
+        // ──────────────────────────────────────────────
+        // Nova Conversa
+        // ──────────────────────────────────────────────
+        newChatBtn.addEventListener('click', () => {
+            chatWindow.innerHTML = `
+                <div id="welcome-block" class="flex items-start gap-3">
+                    <div class="w-9 h-9 rounded-full bg-slate-700 flex items-center justify-center
+                                text-white font-bold text-xs shrink-0">IA</div>
+                    <div class="bg-slate-100 text-slate-800 p-3 rounded-xl rounded-tl-none max-w-xl">
+                        <p class="text-sm">Nova conversa iniciada! O que você quer analisar?</p>
+                        <div class="mt-3 flex flex-wrap gap-2">
+                            <button class="suggestion text-xs px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-blue-50 hover:border-blue-400 text-slate-600 hover:text-blue-700 transition">Qual está o IPCA dos últimos 2 anos?</button>
+                            <button class="suggestion text-xs px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-blue-50 hover:border-blue-400 text-slate-600 hover:text-blue-700 transition">Compare a Selic e o IPCA desde 2022</button>
+                            <button class="suggestion text-xs px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-blue-50 hover:border-blue-400 text-slate-600 hover:text-blue-700 transition">Qual o juro real no Brasil hoje? (Fisher)</button>
+                            <button class="suggestion text-xs px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-blue-50 hover:border-blue-400 text-slate-600 hover:text-blue-700 transition">Curva de Phillips: IPCA vs desemprego</button>
+                        </div>
+                    </div>
+                </div>`;
+            sessionCostTotal = 0;
+            sessionCostEl.textContent = '$0.000000';
+            // Rebinda os chips recém-criados
+            chatWindow.querySelectorAll('.suggestion').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    messageInput.value = btn.textContent.trim();
+                    messageInput.focus();
+                    chatForm.requestSubmit();
+                });
+            });
+        });
 
         // ──────────────────────────────────────────────
         // Mobile: toggle painel histórico
@@ -227,14 +360,39 @@
         // ──────────────────────────────────────────────
         // Adiciona resposta do agente
         // ──────────────────────────────────────────────
-        function addAgentMessage(text, plotBase64, costUsd) {
+        function addAgentMessage(text, plotBase64, costUsd, hasData, errorMsg) {
             const el = document.createElement('div');
             el.className = 'flex items-start gap-3';
 
-            // Texto da resposta
-            let content = `<p class="text-sm leading-relaxed">${text.replace(/\n/g, '<br>')}</p>`;
+            // Renderiza markdown com DOMPurify
+            const renderedMd = DOMPurify.sanitize(marked.parse(text || ''));
+            let content = `<div class="md-body text-sm leading-relaxed">${renderedMd}</div>`;
 
-            // Gráfico (pode ser subplot empilhado — usa largura total)
+            // Badge sem dados
+            if (hasData === false) {
+                content = `
+                    <div class="flex items-center gap-1.5 mb-2 text-amber-700 bg-amber-50 border border-amber-200
+                                rounded-lg px-2.5 py-1 text-xs">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24"
+                             fill="none" stroke="currentColor" stroke-width="2"
+                             stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                            <line x1="12" y1="9" x2="12" y2="13"/>
+                            <line x1="12" y1="17" x2="12.01" y2="17"/>
+                        </svg>
+                        Nenhum dado encontrado para esta consulta
+                    </div>` + content;
+            }
+
+            // Badge de erro
+            if (errorMsg) {
+                content += `
+                    <div class="mt-2 text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-2.5 py-1">
+                        ⚠️ ${escapeHtml(errorMsg)}
+                    </div>`;
+            }
+
+            // Gráfico
             if (plotBase64) {
                 content += `
                     <div class="mt-3">
@@ -246,7 +404,7 @@
                     </div>`;
             }
 
-            // Badge de custo estimado
+            // Badge de custo
             if (costUsd !== undefined && costUsd !== null) {
                 const costStr = `$${costUsd.toFixed(6)}`;
                 content += `
@@ -344,7 +502,13 @@
                     sessionCostEl.textContent = `$${sessionCostTotal.toFixed(6)}`;
                 }
 
-                addAgentMessage(data.text, data.plot_base64, data.cost_estimate_usd);
+                addAgentMessage(
+                        data.text,
+                        data.plot_base64,
+                        data.cost_estimate_usd,
+                        data.has_data,
+                        data.error,
+                    );
 
                 // Atualiza histórico após nova resposta
                 loadHistory();
