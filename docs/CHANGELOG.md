@@ -7,6 +7,138 @@ e o projeto segue [Versionamento Semântico](https://semver.org/lang/pt-BR/).
 
 ---
 
+## [0.5.0] — 2026-08 (Data Warehouse Histórico — DuckDB + Parquet)
+
+### Adicionado
+- **Novo pacote `src/warehouse/`**: data warehouse histórico incremental.
+  - `registry.py` — manifesto único das 9 séries fetcháveis (BCB, IBGE, IPEA,
+    Banco Mundial) com `resolve_series_id()` (nome de coluna → series_id).
+  - `store.py` — `WarehouseStore`: um Parquet por série (histórico completo,
+    upsert com dedup por data) + metadados de atualização em DuckDB
+    (`last_refreshed_at`, `last_error`); status agregado via SQL direto sobre
+    o Parquet (`count`/`min`/`max` de data), sem carregar tudo em pandas.
+  - `pipeline.py` — atualização incremental por fonte: BCB busca só o delta
+    desde a última data salva (backfill inicial em blocos de 9 anos para
+    séries diárias — Selic/Dólar rejeitam janelas BCB > 10 anos); IBGE/IPEA/
+    Banco Mundial reconsultam o disponível (APIs não suportam range
+    incremental) e o upsert deduplica. Falha isolada por série.
+  - `scripts/refresh_warehouse.py` — CLI para rodar o backfill/refresh fora
+    do servidor (`--status-only` para só consultar).
+  - `GET /admin/data-status` e `POST /admin/refresh` (`src/api/admin.py`) —
+    painel de consistência dos dados e botão de atualização manual no
+    frontend (nova seção "Status dos Dados" no rodapé do sidebar).
+  - `tools/bcb.py`: `get_bcb_series()` ganhou `end_date` opcional (retrocompatível,
+    default = até hoje) — necessário para o backfill em blocos.
+
+### Corrigido
+- **[Inconsistência real, reportada pelo usuário em teste manual] Percentil/
+  z-score variavam conforme a fase da pergunta**: `stats_node` calculava
+  essas métricas sobre a mesma janela que o Planner buscou para EXIBIR no
+  gráfico — "IPCA vs. média de 3 anos" e "IPCA vs. histórico" retornavam
+  percentis diferentes (8,6% vs. 19,3%) para o mesmo valor atual, porque cada
+  pergunta usava uma janela de dados diferente como "histórico". Corrigido:
+  quando a coluna corresponde a uma série do warehouse, `stats_node` agora
+  combina o histórico completo salvo com a janela ao vivo (o valor mais
+  recente buscado sempre prevalece — `latest_value` nunca fica desatualizado)
+  antes de calcular médias/z-score/percentil. Validado ao vivo: a mesma
+  pergunta em janelas de 3 e 10 anos agora retorna exatamente o mesmo
+  percentil (12,3%) e z-score (-0,86), usando as 318 observações completas do
+  warehouse em ambos os casos.
+- **`Tz-aware datetime.datetime cannot be converted to datetime64 unless
+  utc=True`** — a API do IPEADATA retorna algumas datas com timezone
+  embutido e outras sem, na mesma série (achado ao rodar o backfill real do
+  FBCF). `WarehouseStore` normaliza agora via `pd.to_datetime(idx, utc=True).tz_convert(None)`.
+
+### Validado com dados reais
+Backfill completo rodado contra as APIs reais (BCB, IBGE, IPEA, Banco
+Mundial): 9/9 séries — Selic (9711 linhas desde 2000), Dólar (6676), IPCA
+(318), Desocupação (172), PIB Trimestral (60), IPCA-15 (60), Rendimento PNAD
+(60), FBCF (364), Gini (40, corretamente sinalizado 🔴 por 944 dias de
+defasagem — bate com a limitação já documentada no README).
+
+---
+
+## [0.4.1] — 2026-08 (Manutenção — Concorrência e Dependências)
+
+### Corrigido
+- **Bloqueio do event loop em `/ask` e `/ask-agent`**: `run_agent()` (síncrono, ~30-50s por
+  requisição) era chamado direto dentro de handlers `async`, travando o servidor inteiro
+  (mesmo com 1 worker) para qualquer outra requisição concorrente. Agora despachado via
+  `starlette.concurrency.run_in_threadpool` em `src/api/routes.py` e `src/api/legacy.py`.
+- **Vazamento de detalhes internos no erro 500**: `/ask` devolvia `str(exc)` cru no campo
+  `detail` da resposta HTTP, podendo expor paths, nomes de variáveis ou fragmentos internos.
+  Agora retorna mensagem genérica ao cliente; o detalhe continua logado no servidor
+  (`logger.error(..., exc_info=True)`).
+
+### Atualizado
+- Dependências principais atualizadas (paradas desde meados de 2024):
+  `langgraph` 0.0.57 → 1.2.10, `langchain-google-genai` 1.0.6 → 4.3.2,
+  `fastapi` 0.111.0 → 0.141.1, `uvicorn` 0.29.0 → 0.52.1, `pandas` 2.2.2 → 2.3.3
+  (mantido em 2.x — pandas 3.0 não foi adotado nesta rodada para não misturar uma
+  major breaking change fora de escopo), `matplotlib` 3.9.0 → 3.11.1,
+  `pydantic`/`pydantic-settings`, `slowapi` 0.1.9 → 0.1.10, `python-bcb`, `wbgapi`.
+  Validado com a suíte completa (76 testes unitários + 10 de integração).
+- Removida dependência `langchain` (pacote "guarda-chuva"): nunca foi importada
+  diretamente no código — apenas `langchain-core` e `langchain-google-genai` são
+  usados — e travava a resolução de `langchain-core` numa major antiga.
+- Removido `convert_system_message_to_human=True` de `planner.py`, `analysis.py` e
+  `response.py`: parâmetro descontinuado no `langchain-google-genai` atual (Gemini
+  já trata mensagens de sistema nativamente); virou um kwarg morto e passou a ser
+  silenciosamente ignorado pelas versões recentes da lib.
+- Adicionado `.flake8` (inexistente até então): sem config, o `flake8` caía no
+  limite padrão de 79 colunas enquanto o projeto usa 100 (padrão do `black`),
+  reprovando o job `lint` do CI — que por sua vez bloqueia `unit-tests` e
+  `type-check` via `needs: lint` em `.github/workflows/tests.yml`.
+
+### Corrigido (continuação)
+- **CORS wildcard + credentials**: `CORS_ORIGINS="*"` combinado com
+  `allow_credentials=True` em `src/api/server.py` é uma combinação inválida
+  (sinalizada por scanners de segurança). Agora `allow_credentials` é
+  automaticamente `False` sempre que a origem configurada for `"*"`, e um
+  aviso é logado se isso ocorrer com `APP_ENV=production`.
+- **Vazamento de escopo no Auditor**: testes E2E mostraram a análise do LLM
+  mencionando "projeções"/"ex-ante" para juros reais, embora o `planner.py`
+  declare explicitamente que o agente só tem dados históricos observados (sem
+  Boletim Focus). Novo check `_check_scope_leakage` em `src/agente/nodes/
+  auditor.py` (Check 6) detecta esses termos na análise e sinaliza para o
+  `response_node` recontextualizar a resposta.
+- **[CRÍTICO] Duplicação silenciosa de dados em perguntas multi-ferramenta**:
+  `AgentState.datasets` (e `intermediate_steps`) usava
+  `Annotated[List[Any], operator.add]`. Como TODO nó do grafo faz `return state`
+  (o dict inteiro mutado, não só as chaves alteradas), o LangGraph tratava
+  qualquer nó que apenas repassasse `datasets` sem modificá-lo — `next_tool_node`,
+  `stats_node`, `analysis_node`, `auditor_node`, `plot_node`, `response_node` —
+  como uma NOVA contribuição a somar ao reducer, duplicando os DataFrames já
+  coletados a cada nó subsequente do pipeline. Efeito visível: qualquer pergunta
+  com 2+ ferramentas (comparações, Curva de Phillips, Regra de Taylor e,
+  criticamente, os indicadores derivados — juros reais e câmbio real, que
+  internamente buscam 2 séries) gerava uma coluna duplicada (ex: "432_2") no
+  DataFrame final e um painel repetido no gráfico. Reproduzido isoladamente
+  (2 buscas reais → `datasets` chegava a 6 entradas em vez de 2) e corrigido
+  removendo o reducer: `datasets`/`intermediate_steps` agora são campos comuns
+  (last-write-wins), e `action_node` é o único responsável por reconstruir a
+  lista completa a cada chamada. Teste de regressão em
+  `tests/integration/test_agent_flow.py::test_multi_tool_query_does_not_duplicate_datasets`.
+
+### Melhorado
+- **Gráfico de juros reais (Fisher)**: layout genérico empilhava Selic, IPCA
+  mensal e Juros Reais como três séries desconectadas (e, por causa do bug
+  acima, às vezes com Selic duplicada). Novo painel especializado
+  `_plot_fisher()` em `src/agente/nodes/plot.py`:
+  - Painel 1: Selic (nominal) e Juros Reais (real) **sobrepostos** na mesma
+    escala — a distância vertical entre as duas linhas é visualmente o efeito
+    da inflação, o próprio ponto da Identidade de Fisher.
+  - Painel 2: IPCA **acumulado 12 meses** (o insumo real da fórmula) no lugar
+    do IPCA mensal (unidade diferente, não é o que entra no cálculo).
+  - `compute_juros_reais()` agora expõe `ipca_acum_12m_pct` para viabilizar o
+    painel 2.
+- Linha de média histórica (`_draw_mean_line`): legenda trocada de posição fixa
+  (`loc="upper left"`) para `loc="best"` — evita que a caixa da legenda colida
+  visualmente com a própria série quando o valor mais recente está perto do
+  topo do painel.
+
+---
+
 ## [0.4.0] — 2026-03 (Onda 3 — Rigor Científico)
 
 ### Adicionado
