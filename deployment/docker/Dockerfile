@@ -41,7 +41,7 @@ COPY src/ ./src/
 COPY config/ ./config/
 
 # Cria diretórios de runtime com permissões corretas
-RUN mkdir -p output logs \
+RUN mkdir -p output/warehouse logs \
     && chown -R agente:agente /app
 
 USER agente

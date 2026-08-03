@@ -5,6 +5,7 @@ Testes unitários dos Nós do LangGraph — Agente Macro-BR.
 Testa cada nó de forma isolada, mockando dependências externas
 (LLM, APIs) para garantir velocidade e determinismo.
 """
+
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
@@ -111,8 +112,10 @@ class TestAnalysisNode:
         result = analysis_node(mock_agent_state)
 
         assert result.get("analysis") is not None
-        assert "não foram encontrados" in result["analysis"].lower() or \
-               "solicita" in result["analysis"].lower()
+        assert (
+            "não foram encontrados" in result["analysis"].lower()
+            or "solicita" in result["analysis"].lower()
+        )
 
 
 class TestPlotNode:
@@ -136,10 +139,13 @@ class TestPlotNode:
         result = plot_node(mock_agent_state)
         assert result.get("plot_path") is None
 
-    def test_plot_multi_series_creates_file(self, mock_state_with_data, sample_combined_df, tmp_path):
+    def test_plot_multi_series_creates_file(
+        self, mock_state_with_data, sample_combined_df, tmp_path
+    ):
         """Plot multi-série deve criar arquivo PNG para cada série num subplot."""
-        from agente.nodes.plot import plot_node
         from pathlib import Path
+
+        from agente.nodes.plot import plot_node
 
         state = {**mock_state_with_data, "data": sample_combined_df}
         with patch("agente.nodes.plot.get_settings") as mock_settings:
@@ -149,16 +155,25 @@ class TestPlotNode:
         assert result.get("plot_path") is not None
         assert Path(result["plot_path"]).exists()
 
-    def test_plot_with_juros_reais_derived_creates_file(self, mock_state_with_data, sample_combined_df, tmp_path):
+    def test_plot_with_juros_reais_derived_creates_file(
+        self, mock_state_with_data, sample_combined_df, tmp_path
+    ):
         """Plot com derived_data juros_reais deve adicionar painel extra."""
-        from agente.nodes.plot import plot_node
         from pathlib import Path
+
+        from agente.nodes.plot import plot_node
         from tools.derived import compute_juros_reais
 
         jr = compute_juros_reais(sample_combined_df)
-        assert jr is not None, "compute_juros_reais retornou None — verifique fixture sample_combined_df"
+        assert (
+            jr is not None
+        ), "compute_juros_reais retornou None — verifique fixture sample_combined_df"
 
-        state = {**mock_state_with_data, "data": sample_combined_df, "derived_data": {"juros_reais": jr}}
+        state = {
+            **mock_state_with_data,
+            "data": sample_combined_df,
+            "derived_data": {"juros_reais": jr},
+        }
         with patch("agente.nodes.plot.get_settings") as mock_settings:
             mock_settings.return_value.agent_output_dir = str(tmp_path)
             result = plot_node(state)
@@ -168,13 +183,15 @@ class TestPlotNode:
 
     def test_plot_with_cambio_real_derived_creates_file(self, mock_agent_state, tmp_path):
         """Plot com derived_data cambio_real deve criar dois painéis (nominal + índice)."""
-        from agente.nodes.plot import plot_node
         from pathlib import Path
+
+        from agente.nodes.plot import plot_node
         from tools.derived import compute_cambio_real
 
         dates = pd.date_range("2023-01-01", periods=24, freq="MS")
-        df = pd.DataFrame({"1": [5.0 + i * 0.05 for i in range(24)],
-                           "433": [0.5] * 24}, index=dates)
+        df = pd.DataFrame(
+            {"1": [5.0 + i * 0.05 for i in range(24)], "433": [0.5] * 24}, index=dates
+        )
         cr = compute_cambio_real(df)
         assert cr is not None
 
@@ -188,8 +205,9 @@ class TestPlotNode:
 
     def test_plot_with_historical_stats_mean_line(self, mock_state_with_data, tmp_path):
         """Plot com historical_stats deve incluir linha de média histórica sem erro."""
-        from agente.nodes.plot import plot_node
         from pathlib import Path
+
+        from agente.nodes.plot import plot_node
 
         state = {
             **mock_state_with_data,
@@ -204,8 +222,9 @@ class TestPlotNode:
 
     def test_plot_with_audit_flags_creates_file(self, mock_state_with_data, tmp_path):
         """Plot com audit_flags CRÍTICO deve criar arquivo sem erro."""
-        from agente.nodes.plot import plot_node
         from pathlib import Path
+
+        from agente.nodes.plot import plot_node
 
         state = {
             **mock_state_with_data,
@@ -250,8 +269,10 @@ class TestPlotNode:
 
     def test_plot_title_uses_question(self, mock_state_with_data, tmp_path):
         """Gráfico de série única deve usar a pergunta do usuário como título."""
-        from agente.nodes.plot import plot_node
         import matplotlib
+
+        from agente.nodes.plot import plot_node
+
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
 
@@ -259,19 +280,23 @@ class TestPlotNode:
         captured_title = {}
 
         orig_savefig = plt.savefig
+
         def mock_savefig(path, **kwargs):
             fig = plt.gcf()
             texts = [t.get_text() for t in fig.texts] + [ax.get_title() for ax in fig.axes]
             captured_title["all"] = " ".join(texts)
             orig_savefig(path, **kwargs)
 
-        with patch("agente.nodes.plot.get_settings") as ms, \
-             patch("agente.nodes.plot.plt.savefig", side_effect=mock_savefig):
+        with (
+            patch("agente.nodes.plot.get_settings") as ms,
+            patch("agente.nodes.plot.plt.savefig", side_effect=mock_savefig),
+        ):
             ms.return_value.agent_output_dir = str(tmp_path)
             plot_node(state)
 
-        assert "IPCA" in captured_title.get("all", ""), \
-            "Título da figura não contém referência à pergunta do usuário"
+        assert "IPCA" in captured_title.get(
+            "all", ""
+        ), "Título da figura não contém referência à pergunta do usuário"
 
 
 class TestResponseNode:
@@ -307,6 +332,7 @@ class TestResponseNode:
 # =============================================================================
 # Onda 3 — Nó de Estatísticas Históricas
 # =============================================================================
+
 
 class TestStatsNode:
     """Testes do nó de estatísticas históricas (Onda 3)."""
@@ -418,9 +444,9 @@ class TestStatsNode:
             question="Qual o juro real no Brasil hoje?",
         )
         result = stats_node(state)
-        assert "juros_reais" in result["derived_data"], (
-            "Derivado 'juros_reais' deve ser calculado para pergunta sobre juro real"
-        )
+        assert (
+            "juros_reais" in result["derived_data"]
+        ), "Derivado 'juros_reais' deve ser calculado para pergunta sobre juro real"
         jr_df = result["derived_data"]["juros_reais"]
         assert not jr_df.empty
         assert "juros_reais_pct" in jr_df.columns
@@ -440,10 +466,61 @@ class TestStatsNode:
         assert st["mean_3y"] is not None
         assert st["mean_5y"] is not None
 
+    def test_uses_warehouse_full_history_for_baseline_when_available(self, bypass_warehouse_store):
+        """
+        Regressão: z-score/percentil/médias não podem depender só da janela que
+        o Planner buscou para exibir no gráfico (bug real — ver CHANGELOG: o
+        mesmo IPCA caía em percentis bem diferentes numa pergunta com "3 anos"
+        vs. "histórico"). Com warehouse populado, a coluna '432' (Selic, série
+        real registrada em warehouse/registry.py) deve usar o histórico
+        completo simulado para a baseline, mas manter o valor mais recente da
+        janela ao vivo.
+        """
+        from agente.nodes.stats import stats_node
+
+        # Janela "ao vivo" (o que o Planner buscou para exibir): poucos pontos,
+        # todos altos — sem o warehouse, mean_full seria ~95 (perto do valor
+        # atual) e o z-score ficaria baixo.
+        window_dates = pd.date_range("2026-04-01", periods=3, freq="MS")
+        window_df = pd.DataFrame({"432": [90.0, 95.0, 100.0]}, index=window_dates)
+
+        # Warehouse simulado: histórico longo e consistentemente baixo (10.0),
+        # bem diferente da janela ao vivo.
+        full_dates = pd.date_range("2020-01-01", periods=48, freq="MS")
+        full_hist = pd.DataFrame({"value": [10.0] * 48}, index=full_dates)
+        bypass_warehouse_store.read_full.return_value = full_hist
+
+        state = self._make_state(window_df, question="Selic atual")
+        result = stats_node(state)
+        st = result["historical_stats"]["432"]
+
+        assert (
+            st["latest_value"] == 100.0
+        ), "latest_value deve refletir a busca ao vivo, não ficar preso ao warehouse"
+        assert st["mean_full"] < 50.0, (
+            "mean_full deveria ser puxado para baixo pelo histórico completo do "
+            "warehouse (média ~10), não refletir só a janela ao vivo (média ~95)"
+        )
+
+    def test_falls_back_to_window_when_warehouse_empty(self, bypass_warehouse_store):
+        """Sem histórico no warehouse (default do fixture), comportamento fica idêntico ao atual."""
+        from agente.nodes.stats import stats_node
+
+        dates = pd.date_range(end=pd.Timestamp.now(), periods=24, freq="MS")
+        values = list(range(1, 24)) + [100]
+        df = pd.DataFrame({"432": values}, index=dates)
+        state = self._make_state(df)
+
+        result = stats_node(state)
+        st = result["historical_stats"]["432"]
+        assert st["percentile_rank"] > 95.0
+        assert st["latest_value"] == 100.0
+
 
 # =============================================================================
 # Onda 3 — Nó Auditor de Consistência Macroeconômica
 # =============================================================================
+
 
 class TestAuditorNode:
     """Testes do nó auditor de consistência macroeconômica (Onda 3)."""
@@ -482,9 +559,12 @@ class TestAuditorNode:
 
         stats = {
             "ipca": {
-                "latest_value": 4.5, "latest_date": "2020-01-01",
-                "lag_days": 500, "zscore_latest": 0.3,
-                "percentile_rank": 55, "trend_3m": "estável",
+                "latest_value": 4.5,
+                "latest_date": "2020-01-01",
+                "lag_days": 500,
+                "zscore_latest": 0.3,
+                "percentile_rank": 55,
+                "trend_3m": "estável",
             }
         }
         result = auditor_node(self._base_state(historical_stats=stats))
@@ -497,9 +577,12 @@ class TestAuditorNode:
 
         stats = {
             "gini": {
-                "latest_value": 52.0, "latest_date": "2023-01-01",
-                "lag_days": 120, "zscore_latest": 0.1,
-                "percentile_rank": 50, "trend_3m": "estável",
+                "latest_value": 52.0,
+                "latest_date": "2023-01-01",
+                "lag_days": 120,
+                "zscore_latest": 0.1,
+                "percentile_rank": 50,
+                "trend_3m": "estável",
             }
         }
         result = auditor_node(self._base_state(historical_stats=stats))
@@ -513,9 +596,12 @@ class TestAuditorNode:
 
         stats = {
             "selic": {
-                "latest_value": 26.0, "latest_date": "2025-01-01",
-                "lag_days": 10, "zscore_latest": 3.8,
-                "percentile_rank": 99, "trend_3m": "alta",
+                "latest_value": 26.0,
+                "latest_date": "2025-01-01",
+                "lag_days": 10,
+                "zscore_latest": 3.8,
+                "percentile_rank": 99,
+                "trend_3m": "alta",
             }
         }
         result = auditor_node(self._base_state(historical_stats=stats))
@@ -571,9 +657,12 @@ class TestAuditorNode:
         # Dois problemas: dado defasado crítico + outlier extremo
         stats = {
             "ipca": {
-                "latest_value": 25.0, "latest_date": "2019-01-01",
-                "lag_days": 400, "zscore_latest": 4.5,
-                "percentile_rank": 99, "trend_3m": "alta",
+                "latest_value": 25.0,
+                "latest_date": "2019-01-01",
+                "lag_days": 400,
+                "zscore_latest": 4.5,
+                "percentile_rank": 99,
+                "trend_3m": "alta",
             }
         }
         result = auditor_node(self._base_state(historical_stats=stats))
@@ -587,18 +676,60 @@ class TestAuditorNode:
 
         stats = {
             "432": {
-                "latest_value": 13.75, "latest_date": "2025-01-01",
-                "lag_days": 15, "zscore_latest": 1.0,
-                "percentile_rank": 70, "trend_3m": "estável",
+                "latest_value": 13.75,
+                "latest_date": "2025-01-01",
+                "lag_days": 15,
+                "zscore_latest": 1.0,
+                "percentile_rank": 70,
+                "trend_3m": "estável",
             },
             "ipca": {
-                "latest_value": 0.82, "latest_date": "2025-01-01",
-                "lag_days": 15, "zscore_latest": 1.5,
-                "percentile_rank": 75, "trend_3m": "alta",
+                "latest_value": 0.82,
+                "latest_date": "2025-01-01",
+                "lag_days": 15,
+                "zscore_latest": 1.5,
+                "percentile_rank": 75,
+                "trend_3m": "alta",
             },
         }
         result = auditor_node(self._base_state(historical_stats=stats))
         flags_text = " ".join(result["audit_flags"])
-        assert "TENSÃO" in flags_text or "Taylor" in flags_text, (
-            "Selic 13.75% + IPCA em alta deve gerar alerta de tensão monetária (Taylor)"
+        assert (
+            "TENSÃO" in flags_text or "Taylor" in flags_text
+        ), "Selic 13.75% + IPCA em alta deve gerar alerta de tensão monetária (Taylor)"
+
+    def test_flag_scope_leakage_when_analysis_mentions_ex_ante_projection(self):
+        """Análise que menciona 'ex-ante'/'projetado para 20XX' deve gerar flag de vazamento."""
+        from agente.nodes.auditor import auditor_node
+
+        analysis_text = (
+            "Com base nas projeções, o juro real ex-ante projetado para 2026 "
+            "alcança 10,54% ao ano, patamar extremamente elevado."
         )
+        result = auditor_node(self._base_state(analysis=analysis_text))
+        flags_text = " ".join(result["audit_flags"])
+        assert (
+            "VAZAMENTO DE ESCOPO" in flags_text
+        ), "Análise com linguagem de projeção/ex-ante deve acionar o guard-rail de escopo"
+
+    def test_no_scope_leakage_flag_for_legitimate_historical_analysis(self):
+        """Análise puramente histórica (sem termos de projeção) não deve gerar a flag."""
+        from agente.nodes.auditor import auditor_node
+
+        analysis_text = (
+            "A Taxa Selic Meta encontra-se em 13,75% ao ano, patamar contracionista "
+            "segundo a Regra de Taylor. O IPCA acumulado nos últimos 12 meses foi de 4,2%."
+        )
+        result = auditor_node(self._base_state(analysis=analysis_text))
+        flags_text = " ".join(result["audit_flags"])
+        assert (
+            "VAZAMENTO DE ESCOPO" not in flags_text
+        ), "'Selic Meta' é terminologia histórica legítima e não deve disparar falso positivo"
+
+    def test_no_scope_leakage_flag_when_analysis_empty(self):
+        """Sem texto de análise (None ou vazio) → sem flag de vazamento de escopo."""
+        from agente.nodes.auditor import auditor_node
+
+        result = auditor_node(self._base_state(analysis=None))
+        flags_text = " ".join(result["audit_flags"])
+        assert "VAZAMENTO DE ESCOPO" not in flags_text

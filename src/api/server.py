@@ -122,6 +122,11 @@ def create_app() -> FastAPI:
     # -------------------------------------------------------------------------
     app.include_router(router)
 
+    # Status/atualização do data warehouse histórico (painel de consistência)
+    from api.admin import admin_router
+
+    app.include_router(admin_router)
+
     # Endpoint legado para compatibilidade com o frontend existente
     from api.legacy import legacy_router
 

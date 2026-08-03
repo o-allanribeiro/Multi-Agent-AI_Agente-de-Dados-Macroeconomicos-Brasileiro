@@ -40,14 +40,18 @@ Thumbs.db
 # Banco de dados local gerado em desenvolvimento
 *.db
 *.sqlite3
+!output/warehouse/meta.duckdb
 
 # Cache de séries temporais (gerado pelo SeriesCache — regenerável)
 output/series_cache.db
 
-# Gráficos e artefatos gerados pelo agente
-output/
-src/output/
+# Gráficos e artefatos gerados pelo agente (warehouse fica rastreado —
+# histórico real já populado a partir das APIs oficiais, serve como estado
+# inicial do repositório para demonstração)
+output/*
+!output/warehouse/
 !output/.gitkeep
+src/output/
 
 # Relatórios de cobertura de testes
 htmlcov/

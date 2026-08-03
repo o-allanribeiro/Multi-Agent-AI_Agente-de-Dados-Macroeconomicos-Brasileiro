@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """Schemas Pydantic para a API REST — Agente Macro-BR."""
+
 from typing import Optional
 
 from pydantic import BaseModel, Field
@@ -66,3 +67,49 @@ class HealthResponse(BaseModel):
     status: str = Field(description="'ok' se o serviço está operacional.")
     version: str = Field(description="Versão da API.")
     environment: str = Field(description="Ambiente de execução.")
+
+
+class SeriesStatusItem(BaseModel):
+    """Status de atualização de uma série do data warehouse histórico."""
+
+    series_id: str = Field(description="Identificador da série no warehouse (ex: 'bcb_432').")
+    label: str = Field(description="Nome amigável do indicador.")
+    source: str = Field(description="Fonte de dados ('bcb' | 'ibge' | 'ipea' | 'world_bank').")
+    frequency: str = Field(description="Frequência da série.")
+    row_count: int = Field(description="Número de linhas salvas no histórico.")
+    first_date: Optional[str] = Field(default=None, description="Data do primeiro ponto salvo.")
+    last_date: Optional[str] = Field(default=None, description="Data do último ponto salvo.")
+    lag_days: Optional[int] = Field(
+        default=None, description="Dias entre o último ponto salvo e hoje."
+    )
+    last_refreshed_at: Optional[str] = Field(
+        default=None, description="Timestamp UTC da última tentativa de atualização."
+    )
+    last_error: Optional[str] = Field(
+        default=None, description="Erro da última tentativa de atualização, se houver."
+    )
+    status_color: str = Field(description="'green' | 'amber' | 'red' | 'gray' (nunca coletada).")
+
+
+class DataStatusResponse(BaseModel):
+    """Corpo da resposta do endpoint GET /admin/data-status."""
+
+    series: list[SeriesStatusItem]
+
+
+class SeriesRefreshResult(BaseModel):
+    """Resultado da atualização de uma série individual."""
+
+    series_id: str
+    label: str
+    success: bool
+    rows_after: int
+    error: Optional[str] = None
+
+
+class RefreshResponse(BaseModel):
+    """Corpo da resposta do endpoint POST /admin/refresh."""
+
+    results: list[SeriesRefreshResult]
+    total: int
+    succeeded: int

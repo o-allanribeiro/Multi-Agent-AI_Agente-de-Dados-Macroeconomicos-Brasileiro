@@ -13,6 +13,7 @@ Séries suportadas:
 
 Referência: https://www.bcb.gov.br/estabilidadefinanceira/seriestemporais
 """
+
 import logging
 from typing import Optional, Union
 
@@ -66,6 +67,7 @@ class BCBDataSource(DataSource):
         series_code: Union[int, str],
         start_date: Optional[str] = None,
         last_n_years: Optional[int] = None,
+        end_date: Optional[str] = None,
     ) -> Optional[pd.DataFrame]:
         """
         Busca uma série temporal do SGS (Banco Central do Brasil).
@@ -78,6 +80,11 @@ class BCBDataSource(DataSource):
             Data de início no formato 'YYYY-MM-DD'. Tem prioridade sobre last_n_years.
         last_n_years : int, optional
             Número de anos para buscar a partir de hoje.
+        end_date : str, optional
+            Data de fim no formato 'YYYY-MM-DD'. Se omitido, busca até hoje
+            (comportamento padrão, usado pelo agente). Usado pelo warehouse
+            (`src/warehouse/pipeline.py`) para buscar blocos limitados de
+            histórico — séries diárias do BCB rejeitam janelas > 10 anos.
 
         Returns
         -------
@@ -101,14 +108,19 @@ class BCBDataSource(DataSource):
             return None
 
         code = int(series_code)
-        logger.info("Consultando BCB/SGS | série=%d | início=%s", code, start_date)
+        logger.info(
+            "Consultando BCB/SGS | série=%d | início=%s | fim=%s",
+            code,
+            start_date,
+            end_date or "hoje",
+        )
 
         # Tenta cache antes da chamada de rede
         cache = get_series_cache()
         # Série diária (câmbio=1, 21619) vs mensal
         _DAILY_BCB = {1, 21619, 11, 432}
         freq = "diario" if int(code) in _DAILY_BCB else "mensal"
-        cache_key = make_cache_key("bcb", code, start=start_date, years=last_n_years)
+        cache_key = make_cache_key("bcb", code, start=start_date, years=last_n_years, end=end_date)
         cached_df, is_fresh = cache.get(cache_key)
         if is_fresh:
             logger.info("BCB cache hit: serie=%d", code)
@@ -116,7 +128,7 @@ class BCBDataSource(DataSource):
 
         try:
             df = with_retry(
-                lambda: sgs.get({str(code): code}, start=start_date),
+                lambda: sgs.get({str(code): code}, start=start_date, end=end_date),
                 max_retries=3,
                 base_delay=1.5,
             )
@@ -145,6 +157,7 @@ def get_bcb_series(
     series_code: Union[int, str],
     start_date: Optional[str] = None,
     last_n_years: Optional[int] = None,
+    end_date: Optional[str] = None,
 ) -> Optional[pd.DataFrame]:
     """
     Função de conveniência para buscar série do BCB.
@@ -160,6 +173,8 @@ def get_bcb_series(
         Data de início 'YYYY-MM-DD'.
     last_n_years : int, optional
         Número de anos retroativos.
+    end_date : str, optional
+        Data de fim 'YYYY-MM-DD'. Omitido = até hoje.
 
     Returns
     -------
@@ -169,4 +184,5 @@ def get_bcb_series(
         series_code=series_code,
         start_date=start_date,
         last_n_years=last_n_years,
+        end_date=end_date,
     )

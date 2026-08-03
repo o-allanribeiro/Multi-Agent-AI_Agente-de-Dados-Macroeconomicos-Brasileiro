@@ -151,6 +151,29 @@
                     <span id="session-cost" class="font-semibold text-slate-700">$0.000000</span>
                 </p>
             </div>
+
+            <!-- Status dos Dados (data warehouse histórico) -->
+            <details class="border-t border-slate-100 bg-slate-50 text-xs">
+                <summary class="p-3 cursor-pointer select-none text-slate-600 font-medium
+                                 flex items-center justify-between marker:text-slate-400">
+                    <span>Status dos Dados</span>
+                    <button id="refresh-warehouse"
+                            class="p-1 rounded hover:bg-slate-200 text-slate-500 hover:text-slate-700 transition"
+                            title="Atualizar dados agora">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24"
+                             fill="none" stroke="currentColor" stroke-width="2"
+                             stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/>
+                            <path d="M21 3v5h-5"/>
+                            <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/>
+                            <path d="M8 16H3v5"/>
+                        </svg>
+                    </button>
+                </summary>
+                <div id="data-status-list" class="px-3 pb-3 space-y-1.5 max-h-40 overflow-y-auto scrollable">
+                    <p class="text-slate-400">Carregando...</p>
+                </div>
+            </details>
         </aside>
 
         <!-- ═══════════════════════════════════════════════
@@ -278,6 +301,8 @@
         const historyToggle  = document.getElementById('history-toggle');
         const historyPanel   = document.getElementById('history-panel');
         const newChatBtn     = document.getElementById('new-chat-btn');
+        const dataStatusList = document.getElementById('data-status-list');
+        const refreshWarehouseBtn = document.getElementById('refresh-warehouse');
 
         // ──────────────────────────────────────────────
         // Chips de sugestões
@@ -595,6 +620,66 @@
         refreshBtn.addEventListener('click', loadHistory);
 
         // ──────────────────────────────────────────────
+        // Status dos Dados (data warehouse histórico)
+        // ──────────────────────────────────────────────
+        const STATUS_DOT_COLOR = {
+            green: 'bg-green-500',
+            amber: 'bg-amber-500',
+            red:   'bg-red-500',
+            gray:  'bg-slate-300',
+        };
+
+        async function loadDataStatus() {
+            try {
+                const res = await fetch(`${API_BASE}/admin/data-status`);
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const data = await res.json();
+                renderDataStatus(data.series);
+            } catch (e) {
+                dataStatusList.innerHTML = `<p class="text-red-500">Erro ao carregar status.</p>`;
+            }
+        }
+
+        function renderDataStatus(series) {
+            if (!series || series.length === 0) {
+                dataStatusList.innerHTML = `<p class="text-slate-400">Nenhuma série registrada.</p>`;
+                return;
+            }
+            dataStatusList.innerHTML = series.map(s => {
+                const dot = STATUS_DOT_COLOR[s.status_color] || STATUS_DOT_COLOR.gray;
+                const detail = s.row_count > 0
+                    ? `${s.row_count} linhas · último: ${s.last_date} (${s.lag_days}d atrás)`
+                    : 'ainda não coletado';
+                return `
+                    <div class="flex items-center gap-1.5" title="${escapeHtml(s.label)} — ${escapeHtml(detail)}">
+                        <span class="w-1.5 h-1.5 rounded-full shrink-0 ${dot}"></span>
+                        <span class="truncate text-slate-600">${escapeHtml(s.label)}</span>
+                        <span class="ml-auto text-slate-400 shrink-0">${s.row_count || 0}</span>
+                    </div>`;
+            }).join('');
+        }
+
+        // Botão atualizar warehouse — preventDefault/stopPropagation para não
+        // também abrir/fechar o <details> pai (o botão fica dentro do <summary>).
+        refreshWarehouseBtn.addEventListener('click', async (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (refreshWarehouseBtn.disabled) return;
+
+            refreshWarehouseBtn.disabled = true;
+            dataStatusList.innerHTML = `<p class="text-slate-400">Atualizando... (pode levar até 1 min)</p>`;
+            try {
+                const res = await fetch(`${API_BASE}/admin/refresh`, { method: 'POST' });
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                await loadDataStatus();
+            } catch (e) {
+                dataStatusList.innerHTML = `<p class="text-red-500">Erro ao atualizar dados.</p>`;
+            } finally {
+                refreshWarehouseBtn.disabled = false;
+            }
+        });
+
+        // ──────────────────────────────────────────────
         // Utilitários
         // ──────────────────────────────────────────────
         function escapeHtml(str) {
@@ -609,6 +694,7 @@
         // Init
         // ──────────────────────────────────────────────
         loadHistory();
+        loadDataStatus();
     </script>
 </body>
 </html>

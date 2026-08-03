@@ -11,8 +11,9 @@ Entrada  → state["data"] (DataFrame com séries coletadas)
 Saída    → state["historical_stats"] (dict por coluna)
            state["derived_data"]     (dict de DataFrames derivados)
 """
+
 import logging
-from typing import Dict, Any
+from typing import Any, Dict
 
 import numpy as np
 import pandas as pd
@@ -44,7 +45,7 @@ def _compute_series_stats(series: pd.Series) -> Dict[str, Any]:
     lag_days = (pd.Timestamp.now() - now).days
 
     latest_value = float(s.iloc[-1])
-    latest_date  = str(now.date())
+    latest_date = str(now.date())
 
     # Janelas temporais
     cutoff_1y = now - pd.DateOffset(years=1)
@@ -55,11 +56,11 @@ def _compute_series_stats(series: pd.Series) -> Dict[str, Any]:
         sub = s[s.index >= cutoff]
         return float(sub.mean()) if not sub.empty else None
 
-    mean_1y   = _mean_since(cutoff_1y)
-    mean_3y   = _mean_since(cutoff_3y)
-    mean_5y   = _mean_since(cutoff_5y)
+    mean_1y = _mean_since(cutoff_1y)
+    mean_3y = _mean_since(cutoff_3y)
+    mean_5y = _mean_since(cutoff_5y)
     mean_full = float(s.mean())
-    std_full  = float(s.std())
+    std_full = float(s.std())
 
     # Z-score do valor mais recente em relação ao histórico completo
     zscore = (latest_value - mean_full) / std_full if std_full > 0 else 0.0
@@ -71,7 +72,7 @@ def _compute_series_stats(series: pd.Series) -> Dict[str, Any]:
     s_3m = s[s.index >= now - pd.DateOffset(months=3)]
     if len(s_3m) >= 2:
         slope = float(np.polyfit(range(len(s_3m)), s_3m.values, 1)[0])
-        tol   = std_full * 0.05 if std_full > 0 else 0.01
+        tol = std_full * 0.05 if std_full > 0 else 0.01
         if slope > tol:
             trend_3m = "alta"
         elif slope < -tol:
@@ -82,20 +83,20 @@ def _compute_series_stats(series: pd.Series) -> Dict[str, Any]:
         trend_3m = "insuficiente"
 
     return {
-        "latest_value":    round(latest_value, 4),
-        "latest_date":     latest_date,
-        "lag_days":        lag_days,
-        "mean_1y":         round(mean_1y, 4) if mean_1y is not None else None,
-        "mean_3y":         round(mean_3y, 4) if mean_3y is not None else None,
-        "mean_5y":         round(mean_5y, 4) if mean_5y is not None else None,
-        "mean_full":       round(mean_full, 4),
-        "std_full":        round(std_full, 4),
-        "zscore_latest":   round(zscore, 2),
+        "latest_value": round(latest_value, 4),
+        "latest_date": latest_date,
+        "lag_days": lag_days,
+        "mean_1y": round(mean_1y, 4) if mean_1y is not None else None,
+        "mean_3y": round(mean_3y, 4) if mean_3y is not None else None,
+        "mean_5y": round(mean_5y, 4) if mean_5y is not None else None,
+        "mean_full": round(mean_full, 4),
+        "std_full": round(std_full, 4),
+        "zscore_latest": round(zscore, 2),
         "percentile_rank": round(percentile_rank, 1),
-        "min_full":        round(float(s.min()), 4),
-        "max_full":        round(float(s.max()), 4),
-        "trend_3m":        trend_3m,
-        "n_obs":           int(len(s)),
+        "min_full": round(float(s.min()), 4),
+        "max_full": round(float(s.max()), 4),
+        "trend_3m": trend_3m,
+        "n_obs": int(len(s)),
     }
 
 
@@ -117,13 +118,52 @@ def _format_stats_context(stats: Dict[str, Dict]) -> str:
         lines.append(f"  Média 3 anos : {st.get('mean_3y', 'N/D')}")
         lines.append(f"  Média 5 anos : {st.get('mean_5y', 'N/D')}")
         lines.append(f"  Média total  : {st['mean_full']} (σ={st['std_full']})")
-        lines.append(f"  Z-score atual: {st['zscore_latest']} "
-                     f"({'acima' if st['zscore_latest'] > 0 else 'abaixo'} da média)")
+        lines.append(
+            f"  Z-score atual: {st['zscore_latest']} "
+            f"({'acima' if st['zscore_latest'] > 0 else 'abaixo'} da média)"
+        )
         lines.append(f"  Percentil    : {st['percentile_rank']}% do histórico")
         lines.append(f"  Min / Max    : {st['min_full']} / {st['max_full']}")
         lines.append(f"  Tendência 3m : {st['trend_3m']}")
 
     return "\n".join(lines)
+
+
+def _series_for_stats(col: str, window_series: pd.Series) -> pd.Series:
+    """
+    Decide qual série usar para calcular estatísticas históricas de uma coluna.
+
+    Sem isto, z-score/percentil/médias eram calculados sobre a mesma janela
+    que o Planner buscou para EXIBIR no gráfico (2, 3, 5 ou 10 anos, conforme
+    a pergunta) — o mesmo valor atual podia cair em percentis bem diferentes
+    dependendo de como a pergunta foi formulada (ver docs/CHANGELOG.md).
+
+    Se a coluna corresponde a uma série conhecida do warehouse (histórico
+    completo salvo incrementalmente — ver `warehouse/registry.py`), combina
+    esse histórico com a janela ao vivo (o valor mais recente buscado sempre
+    prevalece em caso de sobreposição, então `latest_value`/`latest_date`
+    nunca ficam desatualizados por causa do warehouse). Fallback silencioso
+    para a série da janela se o warehouse não tiver dados para essa coluna
+    (indicadores derivados, ou série ainda não coletada pelo pipeline).
+    """
+    try:
+        from warehouse.registry import resolve_series_id
+        from warehouse.store import get_warehouse_store
+
+        series_id = resolve_series_id(col)
+        if series_id is None:
+            return window_series
+
+        full_hist = get_warehouse_store().read_full(series_id)
+        if full_hist.empty:
+            return window_series
+
+        combined = pd.concat([full_hist["value"], window_series])
+        return combined[~combined.index.duplicated(keep="last")].sort_index()
+
+    except Exception as exc:
+        logger.debug("Warehouse indisponível para coluna '%s', usando janela ao vivo: %s", col, exc)
+        return window_series
 
 
 def stats_node(state: AgentState) -> AgentState:
@@ -147,22 +187,22 @@ def stats_node(state: AgentState) -> AgentState:
         logger.warning("STATS: sem dados disponíveis para calcular estatísticas.")
         state["historical_stats"] = {}
         state["historical_stats_text"] = ""
-        state["derived_data"]     = {}
+        state["derived_data"] = {}
         return state
 
     # --- 1. Estatísticas descritivas por coluna ---
     stats: Dict[str, Dict] = {}
     for col in df.columns:
-        stats[col] = _compute_series_stats(df[col])
+        stats[col] = _compute_series_stats(_series_for_stats(col, df[col]))
 
     state["historical_stats"] = stats
     state["historical_stats_text"] = _format_stats_context(stats)
 
     # --- 2. Indicadores derivados detectados na pergunta ---
-    from tools.derived import detect_derived_needed, apply_derived
+    from tools.derived import apply_derived, detect_derived_needed
 
     question = state.get("question", "")
-    needed   = detect_derived_needed(question)
+    needed = detect_derived_needed(question)
 
     derived_results = {}
     if needed:

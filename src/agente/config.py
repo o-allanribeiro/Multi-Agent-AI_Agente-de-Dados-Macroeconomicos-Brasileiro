@@ -68,7 +68,9 @@ class Settings(BaseSettings):
     # -------------------------------------------------------------------------
     # Ambiente
     # -------------------------------------------------------------------------
-    app_env: str = Field(default="development", description="Ambiente: development | production | testing")
+    app_env: str = Field(
+        default="development", description="Ambiente: development | production | testing"
+    )
 
     # -------------------------------------------------------------------------
     # LLM
@@ -81,7 +83,9 @@ class Settings(BaseSettings):
     # -------------------------------------------------------------------------
     log_level: str = Field(default="INFO", description="Nível de log: DEBUG|INFO|WARNING|ERROR")
     log_format: str = Field(default="json", description="Formato: json (CloudWatch) | text (dev)")
-    log_file_path: Optional[str] = Field(default=None, description="Caminho do arquivo de log (None = apenas stdout)")
+    log_file_path: Optional[str] = Field(
+        default=None, description="Caminho do arquivo de log (None = apenas stdout)"
+    )
 
     # -------------------------------------------------------------------------
     # API Server
@@ -112,10 +116,20 @@ class Settings(BaseSettings):
     agent_output_dir: str = Field(default="output", description="Diretório para gráficos gerados")
 
     # -------------------------------------------------------------------------
+    # Data Warehouse (histórico incremental — DuckDB + Parquet)
+    # -------------------------------------------------------------------------
+    warehouse_dir: str = Field(
+        default="output/warehouse",
+        description="Diretório do warehouse histórico (Parquet por série + metadados DuckDB)",
+    )
+
+    # -------------------------------------------------------------------------
     # AWS (opcional — apenas para produção)
     # -------------------------------------------------------------------------
     aws_region: str = Field(default="us-east-1")
-    s3_bucket_name: Optional[str] = Field(default=None, description="Bucket S3 para gráficos (produção)")
+    s3_bucket_name: Optional[str] = Field(
+        default=None, description="Bucket S3 para gráficos (produção)"
+    )
     cloudwatch_log_group: str = Field(default="/ecs/agente-macro")
 
     # -------------------------------------------------------------------------

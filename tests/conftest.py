@@ -5,6 +5,7 @@ conftest.py — Fixtures globais de pytest — Agente Macro-BR.
 As fixtures definidas aqui são disponíveis automaticamente
 para todos os testes sem necessidade de import explícito.
 """
+
 import os
 
 import pandas as pd
@@ -23,9 +24,32 @@ os.environ.setdefault("STORAGE_BACKEND", "sqlite")
 def sample_ipca_df() -> pd.DataFrame:
     """DataFrame de IPCA simulado para testes."""
     dates = pd.date_range(start="2022-01-01", periods=24, freq="MS")
-    values = [0.54, 1.01, 1.62, 1.06, 0.47, 0.67, -0.22, -0.73, -0.29, 0.59,
-              0.41, 0.54, 0.53, 0.84, 0.71, 0.61, 0.23, 0.16, -0.02, 0.26,
-              0.24, 0.83, 0.89, 0.62]
+    values = [
+        0.54,
+        1.01,
+        1.62,
+        1.06,
+        0.47,
+        0.67,
+        -0.22,
+        -0.73,
+        -0.29,
+        0.59,
+        0.41,
+        0.54,
+        0.53,
+        0.84,
+        0.71,
+        0.61,
+        0.23,
+        0.16,
+        -0.02,
+        0.26,
+        0.24,
+        0.83,
+        0.89,
+        0.62,
+    ]
     return pd.DataFrame({"433": values}, index=dates)
 
 
@@ -33,11 +57,38 @@ def sample_ipca_df() -> pd.DataFrame:
 def sample_selic_df() -> pd.DataFrame:
     """DataFrame de Taxa Selic simulado para testes."""
     dates = pd.date_range(start="2021-01-01", periods=36, freq="MS")
-    values = [2.0] * 6 + [5.25, 6.25, 7.25, 8.75, 9.25, 10.75,
-                           11.75, 12.75, 13.25, 13.25, 13.75, 13.75,
-                           13.75, 13.75, 13.25, 12.75, 11.75, 11.25,
-                           10.75, 10.50, 10.25, 10.25, 10.25, 10.50,
-                           10.50, 10.50, 10.75, 10.75, 10.75, 11.25]
+    values = [2.0] * 6 + [
+        5.25,
+        6.25,
+        7.25,
+        8.75,
+        9.25,
+        10.75,
+        11.75,
+        12.75,
+        13.25,
+        13.25,
+        13.75,
+        13.75,
+        13.75,
+        13.75,
+        13.25,
+        12.75,
+        11.75,
+        11.25,
+        10.75,
+        10.50,
+        10.25,
+        10.25,
+        10.25,
+        10.50,
+        10.50,
+        10.50,
+        10.75,
+        10.75,
+        10.75,
+        11.25,
+    ]
     return pd.DataFrame({"432": values}, index=dates)
 
 
@@ -46,8 +97,28 @@ def sample_gini_df() -> pd.DataFrame:
     """DataFrame de Coeficiente de Gini simulado para testes."""
     years = list(range(2000, 2020))
     dates = pd.to_datetime([f"{y}-01-01" for y in years])
-    values = [59.3, 59.0, 58.7, 58.3, 57.8, 57.1, 56.3, 55.4, 54.7, 53.9,
-              53.1, 52.7, 52.3, 52.0, 51.5, 51.1, 53.3, 53.4, 53.9, 53.4]
+    values = [
+        59.3,
+        59.0,
+        58.7,
+        58.3,
+        57.8,
+        57.1,
+        56.3,
+        55.4,
+        54.7,
+        53.9,
+        53.1,
+        52.7,
+        52.3,
+        52.0,
+        51.5,
+        51.1,
+        53.3,
+        53.4,
+        53.9,
+        53.4,
+    ]
     return pd.DataFrame({"SI.POV.GINI": values}, index=dates)
 
 
@@ -81,6 +152,31 @@ def bypass_series_cache(monkeypatch):
     monkeypatch.setattr(_ipea, "get_series_cache", noop)
     monkeypatch.setattr(_ibge, "get_series_cache", noop)
     monkeypatch.setattr(_wb, "get_series_cache", noop)
+
+
+@pytest.fixture(autouse=True)
+def bypass_warehouse_store(monkeypatch):
+    """
+    Por padrão, simula um warehouse vazio durante os testes (sempre "sem
+    histórico salvo"), para que testes existentes de stats_node continuem
+    calculando estatísticas apenas sobre a janela recebida — sem tocar o
+    warehouse real em disco (output/warehouse/) nem exigir dados populados.
+
+    Testes que precisam simular um warehouse COM histórico devem sobrescrever
+    este mock localmente (ver tests/unit/test_nodes.py::TestStatsNode).
+    """
+    from unittest.mock import MagicMock
+
+    import warehouse.store as _warehouse_store
+
+    empty_hist = pd.DataFrame({"value": pd.Series(dtype="float64")})
+    empty_hist.index = pd.DatetimeIndex([], name="date")
+
+    mock_store = MagicMock()
+    mock_store.read_full.return_value = empty_hist
+
+    monkeypatch.setattr(_warehouse_store, "get_warehouse_store", lambda: mock_store)
+    return mock_store
 
 
 @pytest.fixture()
