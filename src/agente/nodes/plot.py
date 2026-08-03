@@ -101,7 +101,12 @@ def plot_node(state: AgentState) -> AgentState:
     try:
         plt.style.use("seaborn-v0_8-whitegrid")
 
-        if has_derived:
+        jr_df = derived_data.get("juros_reais")
+        if jr_df is not None and not jr_df.empty:
+            # Painel especializado: Fisher é sobre a relação nominal x real,
+            # não uma lista de séries desconectadas — ver _plot_fisher.
+            _plot_fisher(df, jr_df, state, plot_path, historical_stats, audit_flags)
+        elif has_derived:
             _plot_with_derived(df, derived_data, state, plot_path, historical_stats, audit_flags)
         elif n_series == 1:
             _plot_single(df, state, plot_path, historical_stats, audit_flags)
@@ -174,7 +179,10 @@ def _draw_mean_line(ax, mean_value: float, label: str = "Média histórica") -> 
         label=f"{label}: {mean_value:.2f}",
         zorder=2,
     )
-    ax.legend(fontsize=8, loc="upper left", framealpha=0.7)
+    # loc="best" evita que a caixa da legenda colida com a própria série
+    # quando o valor mais recente está perto do topo do painel (loc fixo
+    # "upper left" sobrepunha a linha pontilhada nesse caso).
+    ax.legend(fontsize=8, loc="best", framealpha=0.85)
 
 
 def _add_audit_footer(fig, audit_flags: list) -> None:
@@ -384,6 +392,108 @@ def _plot_multi(df: "pd.DataFrame", state: AgentState, plot_path: str,
     _add_audit_footer(fig, audit_flags)
 
     plt.tight_layout(rect=(0, 0.03, 1, 0.99))
+    plt.savefig(plot_path, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+
+
+def _plot_fisher(
+    df: "pd.DataFrame | None",
+    jr_df: "pd.DataFrame",
+    state: AgentState,
+    plot_path: str,
+    historical_stats: dict = None,
+    audit_flags: list = None,
+) -> None:
+    """
+    Painel especializado para juros reais (Identidade de Fisher).
+
+    Em vez de empilhar Selic, IPCA mensal e Juros Reais como três séries
+    desconectadas (layout genérico de _plot_with_derived), este painel
+    mostra o que a Identidade de Fisher realmente descreve:
+
+      - Painel 1: Selic (nominal) e Juros Reais (real) SOBREPOSTOS na mesma
+        escala (% a.a.) — a distância vertical entre as duas linhas É o
+        efeito da inflação, o próprio ponto da identidade de Fisher.
+      - Painel 2: IPCA acumulado em 12 meses — a inflação que efetivamente
+        entra na fórmula (1+Selic)/(1+IPCA_12m)-1, não a variação mensal
+        (unidade diferente, não é o insumo do cálculo).
+    """
+    from tools.derived import _SELIC_COL_CANDIDATES, _find_col
+
+    selic_col = _find_col(df, _SELIC_COL_CANDIDATES) if df is not None and not df.empty else None
+    selic_series = df[selic_col].dropna() if selic_col else None
+
+    jr_series = jr_df["juros_reais_pct"].dropna()
+    ipca_12m_series = (
+        jr_df["ipca_acum_12m_pct"].dropna() if "ipca_acum_12m_pct" in jr_df.columns else None
+    )
+    has_ipca_panel = ipca_12m_series is not None and not ipca_12m_series.empty
+
+    n_panels = 2 if has_ipca_panel else 1
+    fig, axes = plt.subplots(n_panels, 1, figsize=(12, 5 * n_panels), sharex=False)
+    axes = [axes] if n_panels == 1 else list(axes)
+
+    question = _question_title(state)
+    suptitle = f"{question}\nIdentidade de Fisher" if question else "Identidade de Fisher"
+    fig.suptitle(suptitle, fontsize=12, fontweight="bold", y=0.99)
+
+    # --- Painel 1: Selic (nominal) x Juros Reais (real) sobrepostos ---
+    ax0 = axes[0]
+    color_nominal, color_real = "#1f4e79", "#375623"
+
+    if selic_series is not None and not selic_series.empty:
+        ax0.plot(
+            selic_series.index, selic_series, color=color_nominal,
+            linewidth=2, label="Selic (nominal)", zorder=3,
+        )
+        ax0.annotate(
+            f"{selic_series.iloc[-1]:.2f}",
+            xy=(selic_series.index[-1], selic_series.iloc[-1]),
+            xytext=(8, 8), textcoords="offset points", fontsize=8, color=color_nominal,
+            arrowprops={"arrowstyle": "->", "color": color_nominal, "lw": 1.0},
+        )
+
+    ax0.plot(
+        jr_series.index, jr_series, color=color_real,
+        linewidth=2, label="Juros Reais (ex-post)", zorder=3,
+    )
+    ax0.fill_between(jr_series.index, jr_series, alpha=0.08, color=color_real)
+    ax0.annotate(
+        f"{jr_series.iloc[-1]:.2f}",
+        xy=(jr_series.index[-1], jr_series.iloc[-1]),
+        xytext=(8, -14), textcoords="offset points", fontsize=8, color=color_real,
+        arrowprops={"arrowstyle": "->", "color": color_real, "lw": 1.0},
+    )
+    if jr_series.min() < 0 < jr_series.max():
+        ax0.axhline(y=0, color="gray", linewidth=0.7, linestyle="--", alpha=0.5)
+
+    ax0.set_title(
+        "Selic (nominal) vs. Juros Reais (hiato = efeito da inflação)",
+        fontsize=11, fontweight="bold", loc="left", pad=6,
+    )
+    ax0.set_ylabel("% a.a.", fontsize=10)
+    ax0.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m"))
+    ax0.tick_params(axis="x", rotation=25)
+    ax0.legend(fontsize=8, loc="best", framealpha=0.85)
+
+    # --- Painel 2: IPCA acumulado 12 meses (insumo real da fórmula) ---
+    if has_ipca_panel:
+        _draw_series_panel(
+            axes[1], ipca_12m_series,
+            "IPCA — Acumulado 12 meses (insumo da Identidade de Fisher)",
+            "% acum. 12m", "#c00000",
+        )
+
+    fig.text(
+        0.5, 0.01,
+        "Fonte: Agente Macro-BR | Identidade de Fisher: juros_reais = "
+        "(1 + Selic) / (1 + IPCA acum. 12m) − 1",
+        ha="center", fontsize=8, color="gray",
+    )
+
+    _add_audit_footer(fig, audit_flags)
+
+    plt.tight_layout(rect=(0, 0.03, 1, 0.96))
     plt.savefig(plot_path, dpi=150, bbox_inches="tight")
     plt.close(fig)
 

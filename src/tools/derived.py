@@ -94,11 +94,15 @@ def compute_juros_reais(df: pd.DataFrame) -> pd.DataFrame | None:
     juros_reais = (1 + selic_dec) / (1 + ipca_acum_12m) - 1
 
     out_df = pd.DataFrame(
-        {"juros_reais": juros_reais},
+        {"juros_reais": juros_reais, "ipca_acum_12m": ipca_acum_12m},
         index=result.index,
     ).dropna()
 
     out_df["juros_reais_pct"] = out_df["juros_reais"] * 100
+    # Exposto para o gráfico: é o IPCA acumulado 12m (não o mensal) que entra
+    # na Identidade de Fisher — mostrar a variação mensal ao lado do juro real
+    # seria enganoso (unidades diferentes, não é o insumo do cálculo).
+    out_df["ipca_acum_12m_pct"] = out_df["ipca_acum_12m"] * 100
 
     logger.info(
         "Juros reais calculados | %d pontos | último=%.2f%% a.a.",

@@ -263,6 +263,23 @@ class TestDerivedTools:
         df = pd.DataFrame({"432": [12.0] * 24}, index=dates)
         assert compute_juros_reais(df) is None
 
+    def test_juros_reais_exposes_ipca_acum_12m_for_chart(self):
+        """
+        Deve expor 'ipca_acum_12m_pct' — é essa série (não o IPCA mensal) que
+        entra na Identidade de Fisher, e o gráfico precisa dela para mostrar
+        o insumo correto ao lado do juro real (não o IPCA mensal, que tem
+        unidade diferente e confunde a leitura do hiato de Fisher).
+        """
+        from tools.derived import compute_juros_reais
+
+        df = self._make_selic_ipca_df(n=36, selic_pct=13.75, ipca_monthly_pct=0.4)
+        result = compute_juros_reais(df)
+
+        assert result is not None
+        assert "ipca_acum_12m_pct" in result.columns
+        expected_12m = ((1.004**12) - 1) * 100  # ≈ 4.91%
+        assert abs(result["ipca_acum_12m_pct"].iloc[-1] - expected_12m) < 0.5
+
     def test_juros_reais_col_name_candidates(self):
         """Deve funcionar com nomes alternativos de coluna (selic, ipca)."""
         from tools.derived import compute_juros_reais
