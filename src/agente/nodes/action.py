@@ -89,12 +89,14 @@ def action_node(state: AgentState) -> AgentState:
             logger.warning("Ferramenta retornou DataFrame vazio para: %s", tool_name)
             state["error"] = "A consulta não retornou dados para o período solicitado."
         else:
-            # Acumula com datasets anteriores (operator.add no reducer do LangGraph)
+            # 'datasets' não tem reducer (ver agente/state.py) — este nó é o
+            # único responsável por reconstruir a lista completa a cada
+            # chamada (prev + novo), não apenas retornar o item novo.
             prev_datasets: list = state.get("datasets") or []
-            merged = _merge_datasets(prev_datasets + [result_df])
+            new_datasets = prev_datasets + [result_df]
+            merged = _merge_datasets(new_datasets)
             state["data"] = merged
-            # Retorna apenas o novo DF — o reducer appenda à lista acumulada
-            state["datasets"] = [result_df]
+            state["datasets"] = new_datasets
             logger.info(
                 "Dados acumulados | nova_série=%s | total_colunas=%d | shape=%s",
                 result_df.columns[0],

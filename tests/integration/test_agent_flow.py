@@ -9,6 +9,7 @@ from unittest.mock import MagicMock, patch
 
 import pandas as pd
 import pytest
+from langchain_core.messages import AIMessage
 
 
 @pytest.fixture()
@@ -129,3 +130,70 @@ class TestAgentPipeline:
             result = run_agent("Qual o PIB atual?", session_id="test-int-003")
 
         assert result is not None
+
+    def test_multi_tool_query_does_not_duplicate_datasets(self):
+        """
+        Regressão: perguntas com 2+ ferramentas (ex: Selic + IPCA para juro real)
+        não podem duplicar séries no DataFrame final.
+
+        Bug real observado: como AgentState.datasets usava Annotated[..., operator.add]
+        e todo nó do grafo faz `return state` (dict inteiro), qualquer nó que apenas
+        repassasse 'datasets' sem alterá-lo (ex: next_tool_node, stats_node) era
+        tratado pelo LangGraph como uma NOVA contribuição a somar — duplicando os
+        DataFrames já coletados a cada nó subsequente do pipeline. Resultado visível:
+        coluna "432_2" duplicada no gráfico/dados de "Qual o juro real no Brasil hoje?".
+        """
+        planner_json = (
+            '{"plan": "Buscar Selic e IPCA para calcular juro real via Fisher.", '
+            '"tools": ['
+            '{"tool_to_use": "get_bcb_series", "tool_params": {"series_code": 432, "last_n_years": 1}}, '
+            '{"tool_to_use": "get_bcb_series", "tool_params": {"series_code": 433, "last_n_years": 1}}'
+            ']}'
+        )
+        # Nota: RunnableLambda envolve objetos não-Runnable chamando-os
+        # diretamente (mock(x)), não via .invoke(x) — por isso configuramos
+        # tanto o retorno de chamada quanto o de .invoke.
+        mock_planner_llm = MagicMock(return_value=AIMessage(content=planner_json))
+        mock_planner_llm.invoke.return_value = AIMessage(content=planner_json)
+
+        mock_analysis_llm = MagicMock(
+            return_value=AIMessage(content="Análise consolidada de Selic e IPCA.")
+        )
+        mock_analysis_llm.invoke.return_value = mock_analysis_llm.return_value
+
+        mock_response_llm = MagicMock(
+            return_value=AIMessage(content="Resposta final sobre o juro real.")
+        )
+        mock_response_llm.invoke.return_value = mock_response_llm.return_value
+
+        dates = pd.date_range("2024-01-01", periods=12, freq="MS")
+        df_selic = pd.DataFrame({"432": [13.75] * 12}, index=dates)
+        df_ipca = pd.DataFrame({"433": [0.5] * 12}, index=dates)
+
+        mock_registry = MagicMock()
+        mock_registry.has.return_value = True
+        mock_registry.get.return_value = lambda **kwargs: (
+            df_selic if kwargs.get("series_code") == 432 else df_ipca
+        )
+
+        with (
+            patch("agente.nodes.planner.ChatGoogleGenerativeAI", return_value=mock_planner_llm),
+            patch("agente.nodes.analysis.ChatGoogleGenerativeAI", return_value=mock_analysis_llm),
+            patch("agente.nodes.response.ChatGoogleGenerativeAI", return_value=mock_response_llm),
+            patch("agente.nodes.action.get_tool_registry", return_value=mock_registry),
+            patch("agente.nodes.plot.plt"),
+        ):
+            from agente.agent import run_agent
+
+            result = run_agent("Qual o juro real no Brasil hoje?", session_id="test-int-004")
+
+        assert result["data"] is not None
+        columns = list(result["data"].columns)
+        assert columns == ["432", "433"], (
+            f"Colunas duplicadas detectadas: {columns} — cada série deve aparecer "
+            f"exatamente uma vez no DataFrame final"
+        )
+        assert len(result["datasets"]) == 2, (
+            f"'datasets' deveria ter exatamente 2 entradas (1 por ferramenta), "
+            f"encontrado {len(result['datasets'])}"
+        )
