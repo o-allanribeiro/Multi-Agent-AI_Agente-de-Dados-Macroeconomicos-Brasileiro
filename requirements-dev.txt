@@ -24,4 +24,4 @@ pre-commit>=3.7.0         # Hooks de pré-commit (CI local)
 # --- Type Stubs (para mypy) ---
 types-requests>=2.31.0
 types-PyYAML>=6.0.0
-pandas-stubs>=2.0.0
+pandas-stubs==2.3.3.260113  # deve casar com a versão major.minor de pandas em requirements.txt

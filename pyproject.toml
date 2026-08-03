@@ -39,21 +39,23 @@ classifiers = [
 ]
 requires-python = ">=3.11"
 dependencies = [
-    "langchain==0.2.1",
-    "langgraph==0.0.57",
-    "langchain-google-genai==1.0.6",
-    "pandas==2.2.2",
-    "matplotlib==3.9.0",
-    "requests>=2.31.0",
+    "langgraph==1.2.10",
+    "langchain-google-genai==4.3.2",
+    "pandas==2.3.3",
+    "matplotlib==3.11.1",
+    "requests>=2.34.2",
     "python-bcb",
-    "wbgapi==1.0.12",
-    "python-dotenv==1.0.1",
-    "pydantic>=2.7.0",
-    "pydantic-settings>=2.2.0",
-    "pyyaml>=6.0.1",
-    "fastapi==0.111.0",
-    "uvicorn[standard]==0.29.0",
-    "python-multipart==0.0.9",
+    "wbgapi==1.0.14",
+    "duckdb==1.5.5",
+    "pyarrow==25.0.0",
+    "python-dotenv==1.2.2",
+    "pydantic>=2.13.4",
+    "pydantic-settings>=2.14.2",
+    "pyyaml>=6.0.3",
+    "fastapi==0.141.1",
+    "uvicorn[standard]==0.52.1",
+    "python-multipart==0.0.32",
+    "slowapi==0.1.10",
 ]
 
 [project.optional-dependencies]

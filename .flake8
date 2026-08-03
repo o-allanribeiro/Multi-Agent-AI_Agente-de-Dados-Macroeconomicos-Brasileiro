@@ -1,0 +1,15 @@
+[flake8]
+# Compatível com a config do black em pyproject.toml (line-length = 100).
+max-line-length = 100
+# E203 (espaço antes de ':') e W503 (quebra antes de operador binário)
+# conflitam com o estilo de formatação do black — desabilitados por recomendação
+# oficial do black: https://black.readthedocs.io/en/stable/guides/using_black_with_other_tools.html
+extend-ignore = E203,W503
+extend-exclude =
+    .git,
+    venv,
+    .venv,
+    __pycache__,
+    .mypy_cache,
+    htmlcov,
+    dynamodb_local_latest
