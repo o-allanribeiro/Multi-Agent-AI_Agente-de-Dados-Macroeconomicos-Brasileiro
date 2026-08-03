@@ -8,6 +8,7 @@ clara, objetiva e formatada para o usuário.
 Entrada  → state["analysis"], state["question"], state["plot_path"]
 Saída    → state["response"]
 """
+
 import logging
 
 from langchain_core.output_parsers import StrOutputParser
@@ -118,7 +119,6 @@ def response_node(state: AgentState) -> AgentState:
         model=settings.llm_model,
         google_api_key=settings.google_api_key,
         temperature=settings.llm_temperature,
-        convert_system_message_to_human=True,
     )
 
     plot_instruction = (
@@ -156,9 +156,9 @@ def response_node(state: AgentState) -> AgentState:
     try:
         response = chain.invoke(
             {
-                "plan":        state.get("plan", ""),
-                "analysis":    state.get("analysis", "Análise não disponível."),
-                "question":    state["question"],
+                "plan": state.get("plan", ""),
+                "analysis": state.get("analysis", "Análise não disponível."),
+                "question": state["question"],
                 "plot_instruction": plot_instruction,
                 "audit_block": audit_block,
             }

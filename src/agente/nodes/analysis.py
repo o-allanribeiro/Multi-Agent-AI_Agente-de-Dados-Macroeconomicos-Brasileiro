@@ -13,6 +13,7 @@ Suporta:
 Entrada  → state["data"], state["question"]
 Saída    → state["analysis"]
 """
+
 import logging
 from datetime import datetime
 
@@ -119,8 +120,7 @@ def _build_series_summary(df: pd.DataFrame, col: str) -> str:
         f"  Valor mais recente ({last_date.strftime('%d/%m/%Y')}): {last_val:.4f}\n"
         f"  Mínimo ({min_date.strftime('%d/%m/%Y')}): {min_val:.4f}\n"
         f"  Máximo ({max_date.strftime('%d/%m/%Y')}): {max_val:.4f}\n"
-        f"  Média do período: {mean_val:.4f} | Desvio padrão: {std_val:.4f}"
-        + lag_warning
+        f"  Média do período: {mean_val:.4f} | Desvio padrão: {std_val:.4f}" + lag_warning
     )
 
 
@@ -159,7 +159,6 @@ def analysis_node(state: AgentState) -> AgentState:
         model=settings.llm_model,
         google_api_key=settings.google_api_key,
         temperature=settings.llm_temperature,
-        convert_system_message_to_human=True,
     )
 
     is_multi = len(df.columns) > 1
@@ -187,10 +186,7 @@ def analysis_node(state: AgentState) -> AgentState:
     summaries = [_build_series_summary(df, col) for col in df.columns]
     if derived_summaries:
         summaries.extend(derived_summaries)
-    data_summary = (
-        f"Plano de consulta: {plan_context}\n\n"
-        + "\n\n".join(summaries)
-    )
+    data_summary = f"Plano de consulta: {plan_context}\n\n" + "\n\n".join(summaries)
 
     # ------------------------------------------------------------------
     # Carrega base teórica para cada série presente no DataFrame
@@ -242,10 +238,10 @@ def analysis_node(state: AgentState) -> AgentState:
     try:
         analysis = chain.invoke(
             {
-                "data_summary":       data_summary,
-                "theory_section":     theory_section,
+                "data_summary": data_summary,
+                "theory_section": theory_section,
                 "historical_context": historical_context,
-                "question":           state["question"],
+                "question": state["question"],
             }
         )
         state["analysis"] = analysis

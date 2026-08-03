@@ -5,12 +5,14 @@ Rota legada — compatibilidade com o frontend existente (index.html).
 O frontend original faz POST /ask-agent. Este router mantém esse
 endpoint funcionando enquanto o frontend não é atualizado para /ask.
 """
+
 import base64
 import logging
 import uuid
 
 from fastapi import APIRouter
 from pydantic import BaseModel
+from starlette.concurrency import run_in_threadpool
 
 from agente.agent import run_agent
 
@@ -29,7 +31,7 @@ async def ask_agent_legacy(query: _LegacyQuery):
     session_id = str(uuid.uuid4())[:8]
     logger.info("Requisição legada /ask-agent | session=%s", session_id)
 
-    final_state = run_agent(question=query.question, session_id=session_id)
+    final_state = await run_in_threadpool(run_agent, question=query.question, session_id=session_id)
 
     plot_base64 = None
     plot_path = final_state.get("plot_path")

@@ -8,17 +8,25 @@ Endpoints:
   GET  /health  → Health check
   POST /ask     → Submete pergunta ao agente
 """
+
 import base64
 import logging
 import time
 import uuid
 
 from fastapi import APIRouter, HTTPException, Request
+from starlette.concurrency import run_in_threadpool
 
 from agente.agent import run_agent
 from agente.config import get_settings
 from api.limiter import limiter
-from api.schemas import ConversationItem, HealthResponse, HistoryResponse, QueryRequest, QueryResponse
+from api.schemas import (
+    ConversationItem,
+    HealthResponse,
+    HistoryResponse,
+    QueryRequest,
+    QueryResponse,
+)
 from storage import ConversationRecord, get_storage
 from utils.cost_tracker import estimate_cost, log_request_cost
 
@@ -67,7 +75,12 @@ async def ask_agent(request: Request, query: QueryRequest) -> QueryResponse:
     )
 
     try:
-        final_state = run_agent(question=query.question, session_id=session_id)
+        # run_agent é síncrono e bloqueante (chamadas LLM + APIs externas levam
+        # dezenas de segundos) — despachado para threadpool para não travar o
+        # event loop do uvicorn e permitir requisições concorrentes.
+        final_state = await run_in_threadpool(
+            run_agent, question=query.question, session_id=session_id
+        )
         duration_ms = (time.perf_counter() - start_time) * 1000
 
         # Codifica o gráfico em Base64 se existir
@@ -92,7 +105,11 @@ async def ask_agent(request: Request, query: QueryRequest) -> QueryResponse:
         # n_tools = número de séries únicas coletadas (colunas do DataFrame final)
         data_df = final_state.get("data")
         n_tools = len(data_df.columns) if data_df is not None and not data_df.empty else 1
-        tools_used = [str(c) for c in data_df.columns] if data_df is not None and not data_df.empty else [final_state.get("tool_to_use", "unknown")]
+        tools_used = (
+            [str(c) for c in data_df.columns]
+            if data_df is not None and not data_df.empty
+            else [final_state.get("tool_to_use", "unknown")]
+        )
         cost_info = estimate_cost(n_tools)
         log_request_cost(
             session_id=session_id,
@@ -119,9 +136,13 @@ async def ask_agent(request: Request, query: QueryRequest) -> QueryResponse:
                     error=final_state.get("error"),
                 )
             )
-            logger.debug("Conversa persistida | session=%s | backend=%s", session_id, type(storage).__name__)
+            logger.debug(
+                "Conversa persistida | session=%s | backend=%s", session_id, type(storage).__name__
+            )
         except Exception as exc_storage:
-            logger.warning("Falha ao persistir conversa | session=%s | error=%s", session_id, exc_storage)
+            logger.warning(
+                "Falha ao persistir conversa | session=%s | error=%s", session_id, exc_storage
+            )
 
         return QueryResponse(
             session_id=session_id,
@@ -141,7 +162,7 @@ async def ask_agent(request: Request, query: QueryRequest) -> QueryResponse:
         )
         raise HTTPException(
             status_code=500,
-            detail=f"Erro interno do servidor: {exc}",
+            detail="Erro interno do servidor. Tente novamente em instantes.",
         )
 
 

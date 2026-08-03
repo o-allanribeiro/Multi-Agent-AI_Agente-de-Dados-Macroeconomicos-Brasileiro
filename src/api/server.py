@@ -11,13 +11,14 @@ Uso:
     from api.server import create_app
     app = create_app()
 """
+
 import logging
 import time
 from pathlib import Path
 
 from fastapi import FastAPI, Request
-from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
@@ -63,10 +64,22 @@ def create_app() -> FastAPI:
     # -------------------------------------------------------------------------
     # Middleware de CORS
     # -------------------------------------------------------------------------
+    cors_origins = settings.cors_origins_list
+    cors_is_wildcard = "*" in cors_origins
+
+    if cors_is_wildcard and settings.is_production():
+        logger.warning(
+            "CORS_ORIGINS='*' em produção — allow_credentials será forçado a False. "
+            "Configure origens explícitas (CORS_ORIGINS) para permitir credentials."
+        )
+
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=settings.cors_origins_list,
-        allow_credentials=True,
+        allow_origins=cors_origins,
+        # Wildcard + credentials é uma combinação inválida (navegadores recusam
+        # a rejeitar/aceitar de forma consistente) e sinalizada por scanners de
+        # segurança. Credentials só é habilitado quando há origens explícitas.
+        allow_credentials=not cors_is_wildcard,
         allow_methods=["GET", "POST"],
         allow_headers=["Content-Type", "Authorization"],
     )
@@ -111,6 +124,7 @@ def create_app() -> FastAPI:
 
     # Endpoint legado para compatibilidade com o frontend existente
     from api.legacy import legacy_router
+
     app.include_router(legacy_router)
 
     # -------------------------------------------------------------------------

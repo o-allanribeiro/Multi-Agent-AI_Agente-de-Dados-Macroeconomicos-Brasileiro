@@ -12,12 +12,16 @@ Checks implementados:
   3. Freshness — alerta sobre séries com defasagem > threshold
   4. Outlier extremo — alerta se z-score > 2.5 (valor historicamente incomum)
   5. Consistência Selic × IPCA — relação esperada em ambiente ortodoxo
+  6. Vazamento de escopo — detecta se a análise do LLM menciona projeções/
+     expectativas futuras (Focus, "ex-ante", "projetado para 20XX"), que estão
+     fora do escopo declarado do agente (apenas dados históricos observados)
 
 Entrada  → state["data"], state["historical_stats"], state["analysis"],
            state["derived_data"]
 Saída    → state["audit_flags"] (list[str])
            state["audit_summary"] (str — texto formatado para o LLM)
 """
+
 import logging
 from typing import Any, Dict, List
 
@@ -30,12 +34,32 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Limiares configuráveis
 # ---------------------------------------------------------------------------
-_FRESHNESS_WARN_DAYS      = 90    # alerta se dado mais velho que isto
-_FRESHNESS_CRITICAL_DAYS  = 365   # crítico se mais velho que isto
-_ZSCORE_OUTLIER_THRESHOLD = 2.5   # z-score para sinalizar outlier extremo
-_JUROS_REAIS_MIN_HIST_BR  = -3.0  # % a.a. — mínimo histórico razoável BR
-_JUROS_REAIS_MAX_HIST_BR  = 18.0  # % a.a. — máximo histórico razoável BR
-_JUROS_REAIS_MEAN_BR      = 6.5   # % a.a. — média histórica de longo prazo BR
+_FRESHNESS_WARN_DAYS = 90  # alerta se dado mais velho que isto
+_FRESHNESS_CRITICAL_DAYS = 365  # crítico se mais velho que isto
+_ZSCORE_OUTLIER_THRESHOLD = 2.5  # z-score para sinalizar outlier extremo
+_JUROS_REAIS_MIN_HIST_BR = -3.0  # % a.a. — mínimo histórico razoável BR
+_JUROS_REAIS_MAX_HIST_BR = 18.0  # % a.a. — máximo histórico razoável BR
+_JUROS_REAIS_MEAN_BR = 6.5  # % a.a. — média histórica de longo prazo BR
+
+# Termos que indicam que o LLM projetou/especulou para o futuro em vez de se
+# ater aos dados históricos observados (único tipo de dado que o agente possui —
+# ver restrições em nodes/planner.py). Frases específicas para evitar falso
+# positivo com termos legítimos do domínio (ex: "Selic Meta" é o nome real da
+# série BCB 432, então "meta" isolado NÃO entra nesta lista).
+_SCOPE_LEAKAGE_KEYWORDS = [
+    "boletim focus",
+    "expectativa de mercado",
+    "expectativas de mercado",
+    "juro real ex-ante",
+    "ex-ante",
+    "projeção para 20",
+    "projetado para 20",
+    "previsto para 20",
+    "previsão para 20",
+    "deverá atingir",
+    "deverá alcançar",
+    "espera-se que",
+]
 
 
 def _check_freshness(stats: Dict[str, Dict]) -> List[str]:
@@ -136,9 +160,9 @@ def _check_selic_ipca_consistency(stats: Dict[str, Dict]) -> List[str]:
         return flags  # não há dados suficientes para o check
 
     selic_latest = selic_st.get("latest_value", 0)
-    selic_trend  = selic_st.get("trend_3m", "estável")
-    ipca_latest  = ipca_st.get("latest_value", 0)
-    ipca_trend   = ipca_st.get("trend_3m", "estável")
+    selic_trend = selic_st.get("trend_3m", "estável")
+    ipca_latest = ipca_st.get("latest_value", 0)
+    ipca_trend = ipca_st.get("trend_3m", "estável")
 
     # Selic elevada (> 10%) + IPCA acelerando → sinal de tensão
     if selic_latest > 10 and ipca_trend == "alta":
@@ -168,6 +192,36 @@ def _check_selic_ipca_consistency(stats: Dict[str, Dict]) -> List[str]:
     return flags
 
 
+def _check_scope_leakage(analysis_text: str) -> List[str]:
+    """
+    Detecta se a análise textual do LLM menciona projeções/expectativas futuras.
+
+    O agente possui SOMENTE dados históricos observados (séries BCB/IBGE/IPEA/
+    Banco Mundial já realizadas) — nunca dados de projeção (Boletim Focus,
+    curva de juros futura, etc.). O nó de análise é instruído a não extrapolar,
+    mas LLMs podem "vazar" para fora do escopo mesmo assim (comportamento
+    observado em testes E2E — ver docs/RESULTADOS_TESTES.md, cenário "Juros
+    Reais"). Este check é uma rede de segurança puramente léxica: não corrige
+    o texto, apenas sinaliza para que o response_node recontextualize.
+    """
+    flags = []
+    if not analysis_text:
+        return flags
+
+    text_lower = analysis_text.lower()
+    hits = sorted({kw for kw in _SCOPE_LEAKAGE_KEYWORDS if kw in text_lower})
+    if hits:
+        flags.append(
+            "🔴 VAZAMENTO DE ESCOPO: a análise técnica menciona projeção/expectativa "
+            f"futura (termos detectados: {', '.join(hits)}), mas este agente possui "
+            "APENAS dados históricos observados — sem acesso ao Boletim Focus ou a "
+            "modelos preditivos. A resposta final DEVE remover essa afirmação ou "
+            "deixar explícito que não é um dado oficial de projeção, apenas uma "
+            "inferência do modelo de linguagem, sujeita a erro."
+        )
+    return flags
+
+
 def _build_audit_summary(flags: List[str]) -> str:
     """Formata os flags em bloco de texto para o prompt do LLM."""
     if not flags:
@@ -192,8 +246,8 @@ def auditor_node(state: AgentState) -> AgentState:
     """
     logger.info("Executando nó AUDITOR | session=%s", state.get("session_id"))
 
-    stats       = state.get("historical_stats") or {}
-    derived     = state.get("derived_data") or {}
+    stats = state.get("historical_stats") or {}
+    derived = state.get("derived_data") or {}
     audit_flags: List[str] = []
 
     # -- Check 1: Freshness (defasagem dos dados)
@@ -208,7 +262,10 @@ def auditor_node(state: AgentState) -> AgentState:
     # -- Check 4: Consistência Selic × IPCA
     audit_flags.extend(_check_selic_ipca_consistency(stats))
 
-    state["audit_flags"]   = audit_flags
+    # -- Check 5: Vazamento de escopo (projeções/expectativas na análise do LLM)
+    audit_flags.extend(_check_scope_leakage(state.get("analysis") or ""))
+
+    state["audit_flags"] = audit_flags
     state["audit_summary"] = _build_audit_summary(audit_flags)
 
     if audit_flags:
@@ -218,6 +275,8 @@ def auditor_node(state: AgentState) -> AgentState:
             state.get("session_id"),
         )
     else:
-        logger.debug("AUDITOR: sem inconsistências detectadas | session=%s", state.get("session_id"))
+        logger.debug(
+            "AUDITOR: sem inconsistências detectadas | session=%s", state.get("session_id")
+        )
 
     return state

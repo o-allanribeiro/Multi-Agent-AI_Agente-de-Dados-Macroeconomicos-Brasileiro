@@ -8,6 +8,7 @@ ferramenta correta e definir os parâmetros de execução.
 Entrada  → state["question"]
 Saída    → state["plan"], state["tool_to_use"], state["tool_params"]
 """
+
 import logging
 
 from langchain_core.output_parsers import JsonOutputParser
@@ -105,7 +106,6 @@ def planner_node(state: AgentState) -> AgentState:
         model=settings.llm_model,
         google_api_key=settings.google_api_key,
         temperature=settings.llm_temperature,
-        convert_system_message_to_human=True,
     )
 
     prompt = ChatPromptTemplate.from_messages(
