@@ -1,6 +1,8 @@
 
 # Agente de IA para Análise de Dados Macroeconômicos do Brasil
 
+[![CI](https://github.com/o-allanribeiro/Multi-Agent-AI_Agente-de-Dados-Macroeconomicos-Brasileiro/actions/workflows/ci.yml/badge.svg)](https://github.com/o-allanribeiro/Multi-Agent-AI_Agente-de-Dados-Macroeconomicos-Brasileiro/actions/workflows/ci.yml)
+
 > **Stack:** Python 3.11 · LangGraph 0.0.57 · Gemini 2.5 Flash · FastAPI · SQLite/DynamoDB  
 > **Versão:** Onda 3 — pipeline de 8 nós com auditor, contexto histórico e indicadores derivados  
 > **Status:** Desenvolvimento ativo
