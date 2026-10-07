@@ -15,6 +15,16 @@ MOCK_IPEA_RESPONSE = {
 }
 
 # Mock de planner output do LLM (JSON esperado)
+# Mock de resposta HTTP do FRED (/fred/series/observations); "." marca observação ausente
+MOCK_FRED_RESPONSE = {
+    "observations": [
+        {"date": "2024-01-01", "value": "4.06"},
+        {"date": "2024-02-01", "value": "4.17"},
+        {"date": "2024-03-01", "value": "."},
+        {"date": "2024-04-01", "value": "4.54"},
+    ]
+}
+
 MOCK_PLANNER_OUTPUT_BCB = {
     "plan": "Buscar série IPCA dos últimos 2 anos via BCB.",
     "tool_to_use": "get_bcb_series",

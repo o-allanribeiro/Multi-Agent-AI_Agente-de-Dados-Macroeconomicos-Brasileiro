@@ -7,6 +7,32 @@ e o projeto segue [Versionamento Semântico](https://semver.org/lang/pt-BR/).
 
 ---
 
+## [Não lançado] — 2026-10 (Fonte FRED — juros dos EUA)
+
+### Adicionado
+- **Nova fonte opcional `tools/fred.py`**: `FREDDataSource` e `get_fred_series()` para
+  T-Bill de 3 meses (`TB3MS`) e Treasuries de 1, 2, 5 e 10 anos (`GS1`, `GS2`, `GS5`,
+  `GS10`), via API REST do FRED (`requests`, retry com backoff e cache — mesmo padrão do
+  IPEA). Sem nova dependência no `requirements.txt`.
+  - Ativada por `FRED_API_KEY` (variável de ambiente ou `.env`). Sem a chave, a ferramenta
+    **não é registrada** no `ToolRegistry`, o Planner não a vê e as séries ficam fora do
+    manifesto do warehouse — o restante do agente funciona como antes.
+  - A chave é removida das mensagens de erro e de log (a API a recebe na query string).
+  - Só aceita os 5 códigos mapeados (lista fechada), em maiúsculas ou minúsculas.
+- **Indicador derivado `inclinacao_curva_eua`** (`tools/derived.py`): Treasury 10 anos −
+  T-Bill 3 meses, em pontos percentuais; painel próprio no gráfico e palavras-chave de
+  detecção ("inclinação da curva", "yield curve", "term spread").
+- `knowledge/juros_externos.md`: base teórica injetada no prompt de análise.
+- Séries FRED no manifesto do warehouse (`fred_tb3ms`, `fred_gs1`, `fred_gs2`, `fred_gs5`,
+  `fred_gs10`), apenas quando a chave está configurada.
+- Testes: `TestFREDTool`, registro condicional no `ToolRegistry` e `TestInclinacaoCurvaEUA`.
+
+### Alterado
+- Prompt do Planner: a curva de juros **brasileira** continua fora do escopo; juros dos EUA
+  só são oferecidos quando `get_fred_series` está disponível.
+
+---
+
 ## [0.5.0] — 2026-08 (Data Warehouse Histórico — DuckDB + Parquet)
 
 ### Adicionado

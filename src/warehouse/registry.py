@@ -19,6 +19,7 @@ from typing import Callable, List, Optional
 import pandas as pd
 
 from tools.bcb import get_bcb_series
+from tools.fred import FRED_SERIES_MAP, fred_available, get_fred_series
 from tools.ibge import get_ibge_series
 from tools.ipea import get_ipea_series
 from tools.world_bank import WorldBankDataSource
@@ -39,7 +40,7 @@ class SeriesSpec:
     """Identificador estável do warehouse (ex: 'bcb_432')."""
 
     source: str
-    """Nome da fonte ('bcb' | 'ibge' | 'ipea' | 'world_bank')."""
+    """Nome da fonte ('bcb' | 'ibge' | 'ipea' | 'world_bank' | 'fred')."""
 
     raw_code: str
     """Nome da coluna que a função de fetch produz (ex: '432', 'pib_trimestral')."""
@@ -171,6 +172,28 @@ SERIES_REGISTRY: List[SeriesSpec] = [
         fetch=_wb_fetch,
     ),
 ]
+
+
+def _fred_spec(code: str, label: str) -> SeriesSpec:
+    """SeriesSpec de uma série FRED mensal (a API devolve o histórico completo)."""
+    return SeriesSpec(
+        id=f"fred_{code.lower()}",
+        source="fred",
+        raw_code=code,
+        label=label,
+        frequency="mensal",
+        refresh_mode="refetch_full",
+        fetch=lambda start_date=None, end_date=None: get_fred_series(code),
+    )
+
+
+# FRED é opcional: sem FRED_API_KEY as séries ficam fora do manifesto, e o
+# refresh do warehouse não registra falhas por uma fonte que nunca foi ativada.
+if fred_available():
+    SERIES_REGISTRY.extend(
+        _fred_spec(meta["code"], f"{meta['name']} — EUA (FRED)")
+        for meta in FRED_SERIES_MAP.values()
+    )
 
 _COLUMN_TO_SERIES_ID = {spec.raw_code: spec.id for spec in SERIES_REGISTRY}
 _ID_TO_SPEC = {spec.id: spec for spec in SERIES_REGISTRY}

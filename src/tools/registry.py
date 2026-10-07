@@ -43,6 +43,14 @@ _TOOLS_METADATA: Dict[str, Dict] = {
     },
 }
 
+# Só entra no registry (e no prompt do Planner) quando FRED_API_KEY está configurada.
+_FRED_TOOL_METADATA: Dict = {
+    "description": "Juros dos Estados Unidos (FRED — Federal Reserve Bank of St. Louis).",
+    "use_for": "T-Bill de 3 meses e Treasuries de 1, 2, 5 e 10 anos (juros externos)",
+    "params": "series_code (str), last_n_years (int) OU start_date (str YYYY-MM-DD)",
+    "mapping": "T-Bill 3m='TB3MS' | 1a='GS1' | 2a='GS2' | 5a='GS5' | 10a='GS10'",
+}
+
 
 class ToolRegistry:
     """
@@ -65,21 +73,30 @@ class ToolRegistry:
     def __init__(self) -> None:
         # Importação local para evitar circular imports e carregar só quando necessário
         from tools.bcb import get_bcb_series
+        from tools.fred import fred_available, get_fred_series
         from tools.ibge import get_ibge_series
         from tools.ipea import get_ipea_series
         from tools.world_bank import get_gini_series
 
-        # Dicionário somente-leitura: impede mutações acidentais pós-inicialização,
-        # garantindo que o singleton compartilhado em ambiente async seja thread-safe.
-        self._tools: types.MappingProxyType = types.MappingProxyType({
+        tools: Dict[str, Callable] = {
             "get_bcb_series":  get_bcb_series,
             "get_ipea_series": get_ipea_series,
             "get_gini_series": get_gini_series,
             "get_ibge_series": get_ibge_series,
-        })
-        self._metadata: types.MappingProxyType = types.MappingProxyType(
-            _TOOLS_METADATA
-        )
+        }
+        metadata: Dict[str, Dict] = dict(_TOOLS_METADATA)
+
+        # FRED é opcional: sem chave a ferramenta nem aparece para o Planner.
+        if fred_available():
+            tools["get_fred_series"] = get_fred_series
+            metadata["get_fred_series"] = _FRED_TOOL_METADATA
+        else:
+            logger.info("FRED_API_KEY ausente — ferramenta get_fred_series desativada")
+
+        # Dicionário somente-leitura: impede mutações acidentais pós-inicialização,
+        # garantindo que o singleton compartilhado em ambiente async seja thread-safe.
+        self._tools: types.MappingProxyType = types.MappingProxyType(tools)
+        self._metadata: types.MappingProxyType = types.MappingProxyType(metadata)
 
     def get(self, name: str) -> Optional[Callable]:
         """Retorna a função da ferramenta pelo nome, ou None se não existir."""

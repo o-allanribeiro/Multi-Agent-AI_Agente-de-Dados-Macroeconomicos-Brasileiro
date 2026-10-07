@@ -51,10 +51,17 @@ _SERIES_LABELS: dict = {
     # World Bank — indicator codes
     "SI.POV.GINI":     ("Coeficiente de Gini — Brasil",                     "Índice (0 – 1)"),
     "NY.GDP.MKTP.CD":  ("PIB — Dólares Correntes (Banco Mundial)",          "USD"),
+    # FRED (Federal Reserve) — juros dos EUA
+    "TB3MS":           ("Treasury Bill 3 meses — EUA (FRED)",               "% a.a."),
+    "GS1":             ("Treasury 1 ano — EUA (FRED)",                      "% a.a."),
+    "GS2":             ("Treasury 2 anos — EUA (FRED)",                     "% a.a."),
+    "GS5":             ("Treasury 5 anos — EUA (FRED)",                     "% a.a."),
+    "GS10":            ("Treasury 10 anos — EUA (FRED)",                    "% a.a."),
     # Indicadores derivados — Onda 3
     "juros_reais_pct": ("Juros Reais Ex-Post — Identidade de Fisher",       "% a.a."),
     "cambio_real_idx": ("Câmbio Real Bilateral BRL/USD (Base 100)",         "Índice"),
     "cambio_nominal":  ("Câmbio Nominal BRL/USD (PTAX Venda)",              "R$/USD"),
+    "inclinacao_curva_eua": ("Inclinação da Curva dos EUA (Treasury 10a − T-Bill 3m)", "p.p."),
 }
 
 
@@ -318,6 +325,7 @@ _PALETTE = [
 _COLOR_DERIVED = {
     "juros_reais": "#375623",   # verde escuro
     "cambio_real": "#7030a0",   # roxo
+    "inclinacao_curva_eua": "#c55a11",   # laranja
 }
 
 
@@ -512,6 +520,7 @@ def _plot_with_derived(
     Painéis gerados por entrada de derived_data:
       - juros_reais  → 1 painel: juros_reais_pct
       - cambio_real  → 2 painéis: cambio_nominal + cambio_real_idx
+      - inclinacao_curva_eua → 1 painel: Treasury 10a − T-Bill 3m (p.p.)
     """
     raw_cols = list(df.columns) if (df is not None and not df.empty) else []
 
@@ -535,6 +544,9 @@ def _plot_with_derived(
                 derived_panels.append(
                     (name + "_idx", der_df["cambio_real_idx"].dropna(), dn, yu, color)
                 )
+        elif name == "inclinacao_curva_eua" and "inclinacao_curva_eua" in der_df.columns:
+            dn, yu = _SERIES_LABELS.get("inclinacao_curva_eua", ("Inclinação da Curva EUA", "p.p."))
+            derived_panels.append((name, der_df["inclinacao_curva_eua"].dropna(), dn, yu, color))
 
     n_total = len(raw_cols) + len(derived_panels)
     if n_total == 0:

@@ -57,11 +57,19 @@ INDICADORES DERIVADOS (calculados a partir de 2 séries primárias):
       → Buscar OBRIGATORIAMENTE: Dólar PTAX (BCB série 1) + IPCA (BCB série 433)
       → Não responder apenas com o câmbio nominal.
 
+  - "inclinação da curva de juros americana" / "yield curve" / "term spread" (SOMENTE se a
+    ferramenta get_fred_series estiver listada acima):
+      → Buscar OBRIGATORIAMENTE: Treasury 10 anos (GS10) + T-Bill 3 meses (TB3MS),
+        ambas por get_fred_series
+      → Inclinação = GS10 - TB3MS; não responder apenas com uma das duas séries.
+
 ESCOPO DO AGENTE (para referência ao usar "none"):
   Dados disponíveis: IPCA, Taxa Selic, Taxa de Desocupação (PNAD), Dólar PTAX,
   FBCF, PIB Trimestral (IBGE/IPEA), Coeficiente de Gini (Banco Mundial).
-  NÃO disponíveis: Boletim Focus, IPCA esperado, Selic terminal, curva de juros,
-  LCI, LCA, spreads bancários, dados do Tesouro Direto, dados de empresas.
+  Juros dos EUA (T-Bill 3m e Treasuries de 1, 2, 5 e 10 anos): SOMENTE se a ferramenta
+  get_fred_series estiver listada acima; caso contrário, use "none".
+  NÃO disponíveis: Boletim Focus, IPCA esperado, Selic terminal, curva de juros brasileira
+  (DI/pré), LCI, LCA, spreads bancários, dados do Tesouro Direto, dados de empresas.
 
 EXEMPLOS DE MAPEAMENTO:
   "Qual o juro real?"                      → tools: [Selic/432, IPCA/433]
@@ -71,6 +79,8 @@ EXEMPLOS DE MAPEAMENTO:
   "Compare Selic e IPCA"                   → tools: [Selic/432, IPCA/433]
   "Desigualdade vs PIB"                    → tools: [Gini, PIB-IBGE]
   "Evolução do câmbio real"               → tools: [Dolar/1, IPCA/433]
+  "Juros dos Treasuries de 10 anos"        → tools: [fred/GS10] (se disponível; senão none)
+  "Selic versus T-Bill americano"          → tools: [Selic/432, fred/TB3MS] (se disponível)
 
 Responda APENAS com JSON válido no seguinte formato:
 {{

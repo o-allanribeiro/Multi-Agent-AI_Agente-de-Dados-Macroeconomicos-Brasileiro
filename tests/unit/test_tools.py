@@ -135,6 +135,164 @@ class TestWorldBankTool:
         assert result is None
 
 
+@pytest.fixture()
+def fred_key(monkeypatch, tmp_path):
+    """Configura uma chave FRED falsa e isola o teste do .env real do desenvolvedor."""
+    monkeypatch.setattr("tools.fred._ENV_FILE", tmp_path / ".env")
+    monkeypatch.setenv("FRED_API_KEY", "chave-falsa-de-teste")
+    return "chave-falsa-de-teste"
+
+
+@pytest.fixture()
+def no_fred_key(monkeypatch, tmp_path):
+    """Garante ausência de chave FRED (ambiente e .env)."""
+    monkeypatch.setattr("tools.fred._ENV_FILE", tmp_path / ".env")
+    monkeypatch.delenv("FRED_API_KEY", raising=False)
+
+
+class TestFREDTool:
+    """Testes do FREDDataSource (Federal Reserve / FRED)."""
+
+    def test_get_fred_series_valid(self, fred_key):
+        """Deve retornar DataFrame float64 e descartar observações ausentes ('.')."""
+        from tests.fixtures.mock_data import MOCK_FRED_RESPONSE
+        from tools.fred import get_fred_series
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = MOCK_FRED_RESPONSE
+        mock_response.raise_for_status = MagicMock()
+
+        with patch("tools.fred.requests.get", return_value=mock_response) as mock_get:
+            result = get_fred_series("GS10")
+
+        assert isinstance(result, pd.DataFrame)
+        assert list(result.columns) == ["GS10"]
+        assert isinstance(result.index, pd.DatetimeIndex)
+        assert len(result) == 3, "A observação '.' (ausente) deve ser descartada"
+        assert result["GS10"].dtype == "float64"
+        assert result["GS10"].iloc[0] == pytest.approx(4.06)
+        sent = mock_get.call_args.kwargs["params"]
+        assert sent["series_id"] == "GS10"
+        assert "observation_start" not in sent
+
+    def test_get_fred_series_accepts_lowercase_code(self, fred_key):
+        """Código em minúsculas deve ser normalizado (a chave do mapa é minúscula)."""
+        from tests.fixtures.mock_data import MOCK_FRED_RESPONSE
+        from tools.fred import get_fred_series
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = MOCK_FRED_RESPONSE
+        mock_response.raise_for_status = MagicMock()
+
+        with patch("tools.fred.requests.get", return_value=mock_response):
+            result = get_fred_series("tb3ms")
+
+        assert result is not None
+        assert list(result.columns) == ["TB3MS"]
+
+    def test_get_fred_series_last_n_years_sets_observation_start(self, fred_key):
+        """last_n_years deve virar observation_start na requisição."""
+        from tests.fixtures.mock_data import MOCK_FRED_RESPONSE
+        from tools.fred import get_fred_series
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = MOCK_FRED_RESPONSE
+        mock_response.raise_for_status = MagicMock()
+
+        with patch("tools.fred.requests.get", return_value=mock_response) as mock_get:
+            get_fred_series("GS5", last_n_years=3)
+
+        assert "observation_start" in mock_get.call_args.kwargs["params"]
+
+    def test_get_fred_series_empty_response(self, fred_key):
+        """Deve retornar None quando não há observações."""
+        from tools.fred import get_fred_series
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"observations": []}
+        mock_response.raise_for_status = MagicMock()
+
+        with patch("tools.fred.requests.get", return_value=mock_response):
+            assert get_fred_series("GS10") is None
+
+    def test_get_fred_series_unsupported_code(self, fred_key):
+        """Série fora do mapa não deve gerar requisição."""
+        from tools.fred import get_fred_series
+
+        with patch("tools.fred.requests.get") as mock_get:
+            assert get_fred_series("CPIAUCSL") is None
+        mock_get.assert_not_called()
+
+    def test_get_fred_series_invalid_code(self, fred_key):
+        """Código vazio deve retornar None."""
+        from tools.fred import get_fred_series
+
+        assert get_fred_series("") is None
+
+    def test_get_fred_series_without_key_returns_none(self, no_fred_key):
+        """Sem FRED_API_KEY não há requisição e o retorno é None."""
+        from tools.fred import get_fred_series
+
+        with patch("tools.fred.requests.get") as mock_get:
+            assert get_fred_series("GS10") is None
+        mock_get.assert_not_called()
+
+    def test_get_fred_series_network_error(self, fred_key):
+        """Erro de rede deve retornar None."""
+        import requests
+        from tools.fred import get_fred_series
+
+        with patch(
+            "tools.fred.requests.get",
+            side_effect=requests.exceptions.ConnectionError("sem rede"),
+        ), patch("utils.http.time.sleep"):
+            assert get_fred_series("GS10") is None
+
+    def test_get_fred_series_http_error_does_not_leak_key(self, fred_key, caplog):
+        """A chave da API não pode aparecer nos logs quando o erro traz a URL."""
+        import logging
+
+        import requests
+        from tools.fred import get_fred_series
+
+        url = f"https://api.stlouisfed.org/fred/series/observations?api_key={fred_key}"
+        mock_response = MagicMock()
+        mock_response.raise_for_status.side_effect = requests.exceptions.HTTPError(
+            f"403 Client Error: Forbidden for url: {url}"
+        )
+
+        with caplog.at_level(logging.DEBUG), patch(
+            "tools.fred.requests.get", return_value=mock_response
+        ):
+            assert get_fred_series("GS10") is None
+
+        assert fred_key not in caplog.text
+        assert "403" in caplog.text
+
+    def test_get_fred_api_key_reads_env_file(self, monkeypatch, tmp_path):
+        """Sem variável de ambiente, a chave deve vir do .env da raiz do projeto."""
+        from tools.fred import fred_available, get_fred_api_key
+
+        env_file = tmp_path / ".env"
+        env_file.write_text('FRED_API_KEY="chave-do-arquivo"\n', encoding="utf-8")
+        monkeypatch.setattr("tools.fred._ENV_FILE", env_file)
+        monkeypatch.delenv("FRED_API_KEY", raising=False)
+
+        assert get_fred_api_key() == "chave-do-arquivo"
+        assert fred_available() is True
+
+    def test_get_fred_api_key_empty_counts_as_missing(self, monkeypatch, tmp_path):
+        """FRED_API_KEY="" (valor do .env.example) deve ser tratada como ausente."""
+        from tools.fred import fred_available
+
+        env_file = tmp_path / ".env"
+        env_file.write_text('FRED_API_KEY=""\n', encoding="utf-8")
+        monkeypatch.setattr("tools.fred._ENV_FILE", env_file)
+        monkeypatch.delenv("FRED_API_KEY", raising=False)
+
+        assert fred_available() is False
+
+
 class TestToolRegistry:
     """Testes do ToolRegistry."""
 
@@ -171,6 +329,23 @@ class TestToolRegistry:
         assert "get_bcb_series" in description
         assert "get_ipea_series" in description
         assert "get_gini_series" in description
+
+    def test_registry_fred_registered_only_with_key(self, fred_key):
+        """Com chave, get_fred_series entra no registry e no prompt do Planner."""
+        from tools.registry import ToolRegistry
+
+        registry = ToolRegistry()
+        assert registry.has("get_fred_series")
+        assert "get_fred_series" in registry.get_tools_description()
+
+    def test_registry_fred_absent_without_key(self, no_fred_key):
+        """Sem chave, o Planner nunca deve ver a ferramenta FRED."""
+        from tools.registry import ToolRegistry
+
+        registry = ToolRegistry()
+        assert not registry.has("get_fred_series")
+        assert "get_fred_series" not in registry.get_tools_description()
+        assert registry.has("get_bcb_series")
 
     def test_registry_dynamic_registration(self):
         """Deve ser possível registrar novas ferramentas dinamicamente."""
@@ -393,3 +568,66 @@ class TestDerivedTools:
         df = self._make_selic_ipca_df()
         result = apply_derived(df, ["derivado_que_nao_existe"])
         assert result == {}
+
+
+class TestInclinacaoCurvaEUA:
+    """Testes do indicador derivado de inclinação da curva dos EUA (GS10 − TB3MS)."""
+
+    @staticmethod
+    def _make_yield_df() -> pd.DataFrame:
+        dates = pd.date_range("2023-01-01", periods=4, freq="MS")
+        return pd.DataFrame(
+            {"GS10": [3.5, 3.6, 3.4, 3.3], "TB3MS": [4.5, 4.6, 3.0, 3.1]}, index=dates
+        )
+
+    def test_inclinacao_is_gs10_minus_tb3ms(self):
+        """A inclinação deve ser a diferença ponto a ponto, em p.p."""
+        from tools.derived import compute_inclinacao_curva_eua
+
+        result = compute_inclinacao_curva_eua(self._make_yield_df())
+
+        assert result is not None
+        assert isinstance(result.index, pd.DatetimeIndex)
+        assert result["inclinacao_curva_eua"].tolist() == pytest.approx([-1.0, -1.0, 0.4, 0.2])
+
+    def test_inclinacao_negative_means_inverted_curve(self):
+        """Curva invertida (juro curto > longo) gera inclinação negativa."""
+        from tools.derived import compute_inclinacao_curva_eua
+
+        result = compute_inclinacao_curva_eua(self._make_yield_df())
+        assert result["inclinacao_curva_eua"].iloc[0] < 0
+
+    def test_inclinacao_returns_none_without_required_columns(self):
+        """Sem GS10 ou sem TB3MS não há como calcular."""
+        from tools.derived import compute_inclinacao_curva_eua
+
+        df = self._make_yield_df()
+        assert compute_inclinacao_curva_eua(df[["GS10"]]) is None
+        assert compute_inclinacao_curva_eua(df[["TB3MS"]]) is None
+
+    def test_inclinacao_returns_none_without_common_months(self):
+        """Séries sem meses em comum devem retornar None."""
+        from tools.derived import compute_inclinacao_curva_eua
+
+        df = self._make_yield_df()
+        df.loc[df.index[:2], "TB3MS"] = float("nan")
+        df.loc[df.index[2:], "GS10"] = float("nan")
+        assert compute_inclinacao_curva_eua(df) is None
+
+    def test_detect_inclinacao_keywords(self):
+        """Perguntas sobre a curva americana devem ativar o derivado."""
+        from tools.derived import detect_derived_needed
+
+        assert "inclinacao_curva_eua" in detect_derived_needed(
+            "Qual a inclinação da curva de juros americana?"
+        )
+        assert "inclinacao_curva_eua" in detect_derived_needed("mostre a yield curve dos EUA")
+        assert detect_derived_needed("Qual foi a Selic em 2023?") == []
+
+    def test_apply_derived_returns_inclinacao(self):
+        """apply_derived deve despachar para o cálculo da inclinação."""
+        from tools.derived import apply_derived
+
+        results = apply_derived(self._make_yield_df(), ["inclinacao_curva_eua"])
+        assert "inclinacao_curva_eua" in results
+        assert not results["inclinacao_curva_eua"].empty
