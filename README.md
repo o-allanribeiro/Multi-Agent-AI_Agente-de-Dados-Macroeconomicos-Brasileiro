@@ -3,7 +3,7 @@
 
 [![CI](https://github.com/o-allanribeiro/Multi-Agent-AI_Agente-de-Dados-Macroeconomicos-Brasileiro/actions/workflows/ci.yml/badge.svg)](https://github.com/o-allanribeiro/Multi-Agent-AI_Agente-de-Dados-Macroeconomicos-Brasileiro/actions/workflows/ci.yml)
 
-> **Stack:** Python 3.11 · LangGraph 0.0.57 · Gemini 2.5 Flash · FastAPI · SQLite/DynamoDB  
+> **Stack:** Python 3.11+ · LangGraph 1.x · Gemini 2.5 Flash · FastAPI · SQLite/DynamoDB · DuckDB/Parquet  
 > **Versão:** Onda 3 — pipeline de 8 nós com auditor, contexto histórico e indicadores derivados  
 > **Status:** Desenvolvimento ativo
 
@@ -24,6 +24,9 @@ Agente de Inteligência Artificial autônomo que responde perguntas em **linguag
 ```
 Pergunta → Planner → Action(es) → Stats → Analysis → Auditor → Plot → Resposta
 ```
+
+**Demonstração em vídeo:** [`docs/Demonstração do Agente de IA para Análise Econômica.mp4`](docs/Demonstração%20do%20Agente%20de%20IA%20para%20Análise%20Econômica.mp4)
+(gravada em out/2025, com uma versão inicial do agente; o pipeline atual tem auditor, estatísticas históricas e indicadores derivados).
 
 ---
 

@@ -83,6 +83,20 @@ Resumo Estatístico (múltiplas séries):
 """
 
 
+def _infer_frequency(index: pd.DatetimeIndex) -> str:
+    """Infere a frequência (diária/mensal/trimestral/anual) pelo espaçamento mediano do índice."""
+    if len(index) < 3:
+        return "indeterminada"
+    median_days = pd.Series(index).diff().dropna().dt.days.median()
+    if median_days <= 4:
+        return "diária"
+    if median_days <= 40:
+        return "mensal"
+    if median_days <= 110:
+        return "trimestral"
+    return "anual"
+
+
 def _build_series_summary(df: pd.DataFrame, col: str) -> str:
     """
     Constrói resumo estatístico de uma série, incluindo aviso de defasagem
@@ -116,7 +130,7 @@ def _build_series_summary(df: pd.DataFrame, col: str) -> str:
     return (
         f"Série ({col}):\n"
         f"  Período: {start_date.strftime('%d/%m/%Y')} a {last_date.strftime('%d/%m/%Y')}\n"
-        f"  Registros: {len(series)}\n"
+        f"  Registros: {len(series)} (frequência observada: {_infer_frequency(series.index)})\n"
         f"  Valor mais recente ({last_date.strftime('%d/%m/%Y')}): {last_val:.4f}\n"
         f"  Mínimo ({min_date.strftime('%d/%m/%Y')}): {min_val:.4f}\n"
         f"  Máximo ({max_date.strftime('%d/%m/%Y')}): {max_val:.4f}\n"
@@ -186,7 +200,14 @@ def analysis_node(state: AgentState) -> AgentState:
     summaries = [_build_series_summary(df, col) for col in df.columns]
     if derived_summaries:
         summaries.extend(derived_summaries)
-    data_summary = f"Plano de consulta: {plan_context}\n\n" + "\n\n".join(summaries)
+    # O modelo não sabe a data de hoje: sem isto, dados recentes parecem "futuros".
+    today_note = (
+        f"Data de hoje: {datetime.now().strftime('%d/%m/%Y')}. "
+        "Todas as datas até hoje são dados observados, não projeções.\n\n"
+    )
+    data_summary = (
+        today_note + f"Plano de consulta: {plan_context}\n\n" + "\n\n".join(summaries)
+    )
 
     # ------------------------------------------------------------------
     # Carrega base teórica para cada série presente no DataFrame
@@ -255,10 +276,12 @@ def analysis_node(state: AgentState) -> AgentState:
     except Exception as exc:
         logger.error("Erro no nó ANALYSIS: %s", exc, exc_info=True)
         # Fallback: resumo direto sem LLM
+        # Inclui o resumo de TODAS as séries (antes só a primeira), para que a
+        # resposta final não afirme que há dados ausentes quando eles existem.
         state["analysis"] = (
             f"Dados disponíveis porém não foi possível gerar análise completa. "
-            f"Indicadores: {', '.join(df.columns.tolist())}. "
-            f"{summaries[0] if summaries else ''}"
+            f"Indicadores: {', '.join(df.columns.tolist())}.\n\n"
+            + "\n\n".join(summaries)
         )
 
     return state

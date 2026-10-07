@@ -31,6 +31,18 @@ e o projeto segue [Versionamento Semântico](https://semver.org/lang/pt-BR/).
 - Prompt do Planner: a curva de juros **brasileira** continua fora do escopo; juros dos EUA
   só são oferecidos quando `get_fred_series` está disponível.
 
+### Corrigido
+- **Fallback do nó de análise omitia séries**: quando o LLM falhava (ex: erro 503 do Gemini),
+  o texto de contingência incluía só o resumo da primeira série, e a resposta final chegava a
+  afirmar que faltavam dados das demais. Agora inclui o resumo de todas.
+- **Dados recentes eram tratados como "futuros"**: o prompt de análise agora informa a data de
+  hoje ao modelo.
+- **Frequência errada na resposta** (ex: série mensal descrita como diária): o resumo
+  estatístico passa a trazer a frequência inferida do espaçamento do índice.
+- Documentação: versões de LangGraph e FastAPI no README e em `docs/ARQUITETURA.md` estavam
+  desatualizadas em relação ao `requirements.txt`; adicionado o arquivo `LICENSE` (MIT, já
+  declarada no README).
+
 ---
 
 ## [0.5.0] — 2026-08 (Data Warehouse Histórico — DuckDB + Parquet)

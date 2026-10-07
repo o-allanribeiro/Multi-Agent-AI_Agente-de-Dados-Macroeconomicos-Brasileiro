@@ -105,6 +105,70 @@ class TestAnalysisNode:
         assert result.get("analysis") is not None
         assert len(result["analysis"]) > 0
 
+    def test_analysis_fallback_keeps_every_series(self, mock_agent_state):
+        """Se o LLM falhar (ex: 503), o fallback deve citar TODAS as séries, não só a primeira."""
+        import pandas as pd
+
+        from agente.nodes.analysis import analysis_node
+
+        idx = pd.date_range("2024-01-01", periods=6, freq="MS")
+        state = mock_agent_state.copy()
+        state["data"] = pd.DataFrame(
+            {"GS10": [4.0, 4.1, 4.2, 4.3, 4.4, 4.5], "TB3MS": [5.0, 5.1, 5.0, 4.9, 4.8, 4.7]},
+            index=idx,
+        )
+
+        with patch("agente.nodes.analysis.ChatGoogleGenerativeAI"), patch(
+            "agente.nodes.analysis.ChatPromptTemplate"
+        ) as mock_pt:
+            mock_chain = MagicMock()
+            mock_chain.invoke.side_effect = RuntimeError("503 UNAVAILABLE")
+            mock_pt.from_messages.return_value.__or__.return_value.__or__.return_value = (
+                mock_chain
+            )
+            result = analysis_node(state)
+
+        assert "Série (GS10)" in result["analysis"]
+        assert "Série (TB3MS)" in result["analysis"]
+
+    def test_analysis_prompt_includes_todays_date(self, mock_state_with_data):
+        """O resumo enviado ao LLM deve informar a data de hoje."""
+        from datetime import datetime
+
+        from agente.nodes.analysis import analysis_node
+
+        captured = {}
+
+        def fake_invoke(payload):
+            captured.update(payload)
+            return "ok"
+
+        with patch("agente.nodes.analysis.ChatGoogleGenerativeAI"), patch(
+            "agente.nodes.analysis.ChatPromptTemplate"
+        ) as mock_pt:
+            mock_chain = MagicMock()
+            mock_chain.invoke.side_effect = fake_invoke
+            mock_pt.from_messages.return_value.__or__.return_value.__or__.return_value = (
+                mock_chain
+            )
+            analysis_node(mock_state_with_data)
+
+        assert f"Data de hoje: {datetime.now().strftime('%d/%m/%Y')}" in captured["data_summary"]
+
+    def test_series_summary_reports_observed_frequency(self):
+        """O resumo enviado ao LLM deve dizer a frequência real da série."""
+        import pandas as pd
+
+        from agente.nodes.analysis import _build_series_summary
+
+        monthly = pd.DataFrame({"x": range(12)}, index=pd.date_range("2024-01-01", periods=12, freq="MS"))
+        daily = pd.DataFrame({"x": range(30)}, index=pd.date_range("2024-01-01", periods=30, freq="D"))
+        yearly = pd.DataFrame({"x": range(6)}, index=pd.date_range("2018-01-01", periods=6, freq="YS"))
+
+        assert "frequência observada: mensal" in _build_series_summary(monthly, "x")
+        assert "frequência observada: diária" in _build_series_summary(daily, "x")
+        assert "frequência observada: anual" in _build_series_summary(yearly, "x")
+
     def test_analysis_without_data(self, mock_agent_state):
         """Nó de análise deve retornar mensagem amigável quando sem dados."""
         from agente.nodes.analysis import analysis_node

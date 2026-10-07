@@ -1,7 +1,7 @@
 # Arquitetura — Agente de Dados Macroeconômicos Brasileiros
 
 > **Versão:** Onda 3 — 8 nós LangGraph com auditor e contexto histórico  
-> **Stack:** Python 3.11 · LangGraph 0.0.57 · Gemini 2.5 Flash · FastAPI 0.111.0 · SQLite/DynamoDB
+> **Stack:** Python 3.11+ · LangGraph 1.x · Gemini 2.5 Flash · FastAPI 0.14x · SQLite/DynamoDB · DuckDB/Parquet
 
 ## Visão Geral
 
