@@ -143,12 +143,14 @@ def bypass_series_cache(monkeypatch):
 
     import tools.bcb as _bcb
     import tools.cache as _cache
+    import tools.fred as _fred
     import tools.ibge as _ibge
     import tools.ipea as _ipea
     import tools.world_bank as _wb
 
     monkeypatch.setattr(_cache, "_cache_instance", mock_cache)
     monkeypatch.setattr(_bcb, "get_series_cache", noop)
+    monkeypatch.setattr(_fred, "get_series_cache", noop)
     monkeypatch.setattr(_ipea, "get_series_cache", noop)
     monkeypatch.setattr(_ibge, "get_series_cache", noop)
     monkeypatch.setattr(_wb, "get_series_cache", noop)

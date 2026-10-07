@@ -25,6 +25,8 @@ _TOOL_TO_KNOWLEDGE: dict[str, str] = {
     "get_gini_series": "gini",
     # IBGE
     "get_ibge_series": None,         # resolvido dinamicamente pelo series_code
+    # FRED (juros dos EUA)
+    "get_fred_series": "juros_externos",
     # Derivados (Onda 3) — resolvido pelo col name no _SERIES_TO_KNOWLEDGE
     "derived": None,
 }
@@ -49,6 +51,7 @@ _SERIES_TO_KNOWLEDGE: dict = {
     "juros_reais_pct": "juros_reais",
     "cambio_real_idx": "dolar",
     "cambio_nominal":  "dolar",
+    "inclinacao_curva_eua": "juros_externos",
 }
 
 

@@ -14,8 +14,8 @@
 Agente de Inteligência Artificial autônomo que responde perguntas em **linguagem natural** sobre a conjuntura macroeconômica brasileira. O agente:
 
 1. **Interpreta** a pergunta e planeja quais dados buscar
-2. **Coleta** dados de APIs oficiais (BCB, IPEA, IBGE, Banco Mundial)
-3. **Calcula** indicadores derivados (juros reais via Identidade de Fisher, câmbio real via PPP)
+2. **Coleta** dados de APIs oficiais (BCB, IPEA, IBGE, Banco Mundial e, opcionalmente, FRED/Federal Reserve)
+3. **Calcula** indicadores derivados (juros reais via Identidade de Fisher, câmbio real via PPP, inclinação da curva de juros dos EUA)
 4. **Contextualiza** com estatísticas históricas: média 1/3/5 anos, z-score, percentil, tendência OLS
 5. **Analisa** com LLM embasado em teoria econômica (Regra de Taylor, Curva de Phillips, Solow...)
 6. **Audita** consistência macroeconômica via regras Python puras (sem alucinação)
@@ -58,8 +58,17 @@ Pergunta → Planner → Action(es) → Stats → Analysis → Auditor → Plot 
 | Rendimento Médio Real PNAD | `rendimento_pnad` | IBGE/SIDRA | Trimestral |
 | Formação Bruta de Capital Fixo | `GAC12_INDFBCF12` | IPEADATA | Mensal |
 | Coeficiente de Gini | `SI.POV.GINI` | Banco Mundial | Anual |
+| Treasury Bill 3 meses (EUA) * | `TB3MS` | FRED | Mensal |
+| Treasuries 1, 2, 5 e 10 anos (EUA) * | `GS1`, `GS2`, `GS5`, `GS10` | FRED | Mensal |
 | **Juros Reais (derivado)** | 432 + 433 | BCB calculado | Mensal |
 | **Câmbio Real (derivado)** | 1 + 433 | BCB calculado | Diária |
+| **Inclinação da curva dos EUA (derivado)** * | `GS10` − `TB3MS` | FRED calculado | Mensal |
+
+\* **Fonte opcional (juros externos).** Ativada quando `FRED_API_KEY` está definida no `.env`
+(chave gratuita em <https://fredaccount.stlouisfed.org/apikeys>). Sem a chave, a ferramenta
+`get_fred_series` não é registrada, o Planner nunca a oferece e o restante do agente funciona igual.
+
+> This product uses the FRED® API but is not endorsed or certified by the Federal Reserve Bank of St. Louis.
 
 ---
 
@@ -173,6 +182,13 @@ Acesse `http://127.0.0.1:8002` no navegador.
 "Me explique a Selic em termos reais descontando a inflação."
 ```
 
+### Juros externos (opcional — requer `FRED_API_KEY`)
+```
+"Como evoluiu a inclinação da curva de juros americana nos últimos 15 anos?"
+"Compare a Selic com o T-Bill de 3 meses dos EUA desde 2015."
+"Mostre os juros dos Treasuries de 10 anos nos últimos 5 anos."
+```
+
 ### Multi-indicador e contexto histórico
 ```
 "Compare a Selic com o IPCA dos últimos 12 meses."
@@ -235,6 +251,7 @@ Acesse `http://127.0.0.1:8002` no navegador.
 | Limitação | Contorno |
 |---|---|
 | Gini (Banco Mundial): lag de 2-3 anos | Auditor sinaliza defasagem automaticamente |
+| Juros dos EUA (FRED) só em frequência mensal e só com `FRED_API_KEY` | Sem chave a ferramenta fica desativada; pedidos sobre juros externos recebem "fora do escopo" |
 | Cache SQLite não compartilhado entre workers | 1 worker local; Redis em produção multi-worker |
 | Gemini sem garantia de disponibilidade 100% | Retry configurado (3 tentativas com backoff) |
 

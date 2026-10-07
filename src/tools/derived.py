@@ -8,6 +8,7 @@ de duas ou mais séries primárias via identidades macroeconômicas.
 Indicadores implementados:
   - Juros Reais ex-post: (1 + Selic) / (1 + IPCA acum_12m) - 1
   - Câmbio Real Efetivo Bilateral simples: Câmbio × (IPCA_BR / IPCA_ref)
+  - Inclinação da curva de juros dos EUA: Treasury 10 anos − T-Bill 3 meses (FRED)
 """
 import logging
 
@@ -22,6 +23,8 @@ logger = logging.getLogger(__name__)
 _SELIC_COL_CANDIDATES = ["selic", "taxa_selic", "Selic", "432"]
 _IPCA_COL_CANDIDATES  = ["ipca", "IPCA", "433", "ipca_ibge"]
 _CAMBIO_COL_CANDIDATES = ["dolar", "dólar", "cambio", "câmbio", "usd", "1"]
+_GS10_COL_CANDIDATES = ["GS10"]
+_TB3MS_COL_CANDIDATES = ["TB3MS"]
 
 
 def _find_col(df: pd.DataFrame, candidates: list[str]) -> str | None:
@@ -169,6 +172,54 @@ def compute_cambio_real(df: pd.DataFrame) -> pd.DataFrame | None:
 
 
 # ---------------------------------------------------------------------------
+# Inclinação da curva de juros dos EUA
+# ---------------------------------------------------------------------------
+
+def compute_inclinacao_curva_eua(df: pd.DataFrame) -> pd.DataFrame | None:
+    """
+    Calcula a inclinação da curva de juros americana.
+
+    Fórmula:
+        inclinacao_curva_eua = Treasury 10 anos (GS10) − T-Bill 3 meses (TB3MS)
+
+    Ambas as séries vêm do FRED em % a.a., média mensal, então a diferença está
+    em pontos percentuais. Valores negativos indicam curva invertida.
+
+    Returns None se alguma das duas séries não estiver presente ou se não houver
+    meses em comum.
+    """
+    gs10_col = _find_col(df, _GS10_COL_CANDIDATES)
+    tb3_col = _find_col(df, _TB3MS_COL_CANDIDATES)
+
+    if gs10_col is None or tb3_col is None:
+        logger.debug(
+            "compute_inclinacao_curva_eua: colunas necessárias não encontradas | "
+            "colunas disponíveis=%s", list(df.columns)
+        )
+        return None
+
+    result = df[[gs10_col, tb3_col]].copy()
+    result.index = pd.to_datetime(result.index)
+    result = result.sort_index().dropna()
+
+    if result.empty:
+        logger.warning("Inclinação da curva EUA: sem meses em comum entre GS10 e TB3MS")
+        return None
+
+    out_df = pd.DataFrame(
+        {"inclinacao_curva_eua": result[gs10_col] - result[tb3_col]},
+        index=result.index,
+    )
+
+    logger.info(
+        "Inclinação da curva EUA calculada | %d pontos | último=%.2f p.p.",
+        len(out_df),
+        out_df["inclinacao_curva_eua"].iloc[-1],
+    )
+    return out_df
+
+
+# ---------------------------------------------------------------------------
 # Dispatcher: detecta derivados aplicáveis e os computa
 # ---------------------------------------------------------------------------
 
@@ -181,6 +232,11 @@ DERIVED_KEYWORDS = {
     "cambio_real": [
         "câmbio real", "cambio real", "taxa real de câmbio",
         "real exchange rate", "poder de compra do real",
+    ],
+    "inclinacao_curva_eua": [
+        "inclinação da curva", "inclinacao da curva",
+        "curva de juros americana", "curva de juros dos eua",
+        "curva de juros nos eua", "yield curve", "term spread",
     ],
 }
 
@@ -228,4 +284,8 @@ def apply_derived(df: pd.DataFrame, derived_names: list[str]) -> dict[str, pd.Da
             r = compute_cambio_real(df)
             if r is not None:
                 results["cambio_real"] = r
+        elif name == "inclinacao_curva_eua":
+            r = compute_inclinacao_curva_eua(df)
+            if r is not None:
+                results["inclinacao_curva_eua"] = r
     return results
