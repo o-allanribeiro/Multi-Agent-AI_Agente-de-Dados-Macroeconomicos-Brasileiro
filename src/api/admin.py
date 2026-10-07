@@ -10,7 +10,7 @@ Endpoints:
 import logging
 from typing import Optional
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from starlette.concurrency import run_in_threadpool
 
 from agente.nodes.auditor import _FRESHNESS_CRITICAL_DAYS, _FRESHNESS_WARN_DAYS
@@ -20,6 +20,7 @@ from api.schemas import (
     SeriesRefreshResult,
     SeriesStatusItem,
 )
+from api.security import require_admin_key
 from warehouse.pipeline import refresh_all
 from warehouse.registry import SERIES_REGISTRY
 from warehouse.store import get_warehouse_store
@@ -53,7 +54,12 @@ async def data_status() -> DataStatusResponse:
     return DataStatusResponse(series=items)
 
 
-@admin_router.post("/refresh", response_model=RefreshResponse, tags=["Administração"])
+@admin_router.post(
+    "/refresh",
+    response_model=RefreshResponse,
+    tags=["Administração"],
+    dependencies=[Depends(require_admin_key)],
+)
 async def refresh_data() -> RefreshResponse:
     """
     Dispara a atualização incremental de todas as séries registradas.

@@ -10,11 +10,12 @@ import base64
 import logging
 import uuid
 
-from fastapi import APIRouter
-from pydantic import BaseModel
+from fastapi import APIRouter, Request
+from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
 
 from agente.agent import run_agent
+from api.limiter import limiter
 
 logger = logging.getLogger(__name__)
 
@@ -22,11 +23,12 @@ legacy_router = APIRouter(tags=["Legado (compatibilidade)"])
 
 
 class _LegacyQuery(BaseModel):
-    question: str
+    question: str = Field(min_length=5, max_length=500)
 
 
 @legacy_router.post("/ask-agent")
-async def ask_agent_legacy(query: _LegacyQuery):
+@limiter.limit("10/minute")
+async def ask_agent_legacy(request: Request, query: _LegacyQuery):
     """Endpoint legado — mantido para compatibilidade com o frontend index.html."""
     session_id = str(uuid.uuid4())[:8]
     logger.info("Requisição legada /ask-agent | session=%s", session_id)
