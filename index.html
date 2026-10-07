@@ -670,6 +670,10 @@
             dataStatusList.innerHTML = `<p class="text-slate-400">Atualizando... (pode levar até 1 min)</p>`;
             try {
                 const res = await fetch(`${API_BASE}/admin/refresh`, { method: 'POST' });
+                if (res.status === 401 || res.status === 503) {
+                    dataStatusList.innerHTML = `<p class="text-red-500">A atualização exige chave de administrador (ADMIN_API_KEY).</p>`;
+                    return;
+                }
                 if (!res.ok) throw new Error(`HTTP ${res.status}`);
                 await loadDataStatus();
             } catch (e) {

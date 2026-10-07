@@ -93,7 +93,15 @@ class Settings(BaseSettings):
     api_host: str = Field(default="0.0.0.0")
     api_port: int = Field(default=8000, ge=1, le=65535)
     api_workers: int = Field(default=1, ge=1)
-    cors_origins: str = Field(default="*", description="Origens CORS separadas por vírgula")
+    cors_origins: str = Field(
+        default="http://localhost:8000,http://127.0.0.1:8000",
+        description="Origens CORS separadas por vírgula ('*' só se configurado de propósito)",
+    )
+    admin_api_key: Optional[str] = Field(
+        default=None,
+        description="Chave exigida (header X-API-Key) em rotas administrativas; "
+        "sem ela, essas rotas ficam desabilitadas em produção",
+    )
 
     # -------------------------------------------------------------------------
     # Armazenamento

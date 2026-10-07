@@ -249,6 +249,16 @@ Acesse `http://127.0.0.1:8002` no navegador.
 
 ---
 
+## Segurança
+
+Este é um projeto de **demonstração**. Antes de expô-lo à internet:
+
+- **Não há autenticação nas rotas de consulta** (`/ask`, `/ask-agent`). Cada pergunta chama o LLM com a sua chave (`GOOGLE_API_KEY`), então coloque o serviço atrás de um proxy com autenticação e mantenha o limite de 10 requisições/minuto.
+- **`POST /admin/refresh`** exige o header `X-API-Key` igual a `ADMIN_API_KEY`. Em produção, sem essa variável a rota fica desabilitada (HTTP 503); fora de produção ela é liberada para uso local.
+- **CORS** vem restrito a `localhost`. Para outros domínios, liste-os em `CORS_ORIGINS`; evite `*`.
+- Chaves (`GOOGLE_API_KEY`, `FRED_API_KEY`, `ADMIN_API_KEY`) ficam só no `.env`, que é ignorado pelo Git. A chave do FRED é mascarada nos logs.
+- Para reportar uma vulnerabilidade, abra uma issue sem detalhes sensíveis ou escreva ao autor pelo LinkedIn.
+
 ## Limitações Conhecidas
 
 | Limitação | Contorno |
